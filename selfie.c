@@ -282,8 +282,8 @@ int SYM_RIGHT_SHIFT  = 29; // >>
 int SYM_LBRACKET     = 30; // [
 int SYM_RBRACKET     = 31; // ]
 
-int* SYMBOLS; // array of strings representing symbols
-//int SYMBOLS[32];
+//int* SYMBOLS; // array of strings representing symbols
+int SYMBOLS[32];
 
 int maxIdentifierLength = 64; // maximum number of characters in an identifier
 int maxIntegerLength    = 10; // maximum number of characters in an integer
@@ -313,7 +313,7 @@ int  sourceFD   = 0;        // file descriptor of open source file
 // ------------------------- INITIALIZATION ------------------------
 
 void initScanner () {
-  SYMBOLS = malloc(32 * SIZEOFINTSTAR);
+//  SYMBOLS = malloc(32 * SIZEOFINTSTAR);
 
   *(SYMBOLS + SYM_IDENTIFIER)   = (int) "identifier";
   *(SYMBOLS + SYM_INTEGER)      = (int) "integer";
@@ -494,7 +494,7 @@ int* putType(int type);
 void typeWarning(int expected, int found);
 
 int* getVariable(int* variable);
-int  load_variable(int* variable);
+int  load_variable(int* variable, int index);
 void load_integer(int value);
 void load_string(int* string);
 
@@ -2374,7 +2374,7 @@ int* getVariable(int* variable) {
   return entry;
 }
 
-int load_variable(int* variable) {
+int load_variable(int* variable, int index) {
   int* entry;
 
   entry = getVariable(variable);
@@ -2639,7 +2639,7 @@ int gr_factor(int* attribute) {
     // ["*"] identifier
     if (symbol == SYM_IDENTIFIER) {
       loadConstantBeforeNonConstant(attribute);
-      type = load_variable(identifier);
+      type = load_variable(identifier,0);
 
       getSymbol();
 
@@ -2686,7 +2686,7 @@ int gr_factor(int* attribute) {
     } else {
       // variable access: identifier
       loadConstantBeforeNonConstant(attribute);
-      type = load_variable(variableOrProcedureName);
+      type = load_variable(variableOrProcedureName,0);
     }
 
     // integer?
@@ -3295,7 +3295,7 @@ void gr_statement() {
 
     // "*" identifier
     if (symbol == SYM_IDENTIFIER) {
-      ltype = load_variable(identifier);
+      ltype = load_variable(identifier,0);
 
       if (ltype != INTSTAR_T)
         typeWarning(INTSTAR_T, ltype);
