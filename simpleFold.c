@@ -1,6 +1,6 @@
 
 
-int a[10+9];
+
 int main(int argc, int* argv) {
 //array access first
 //int* array; //size is 3
@@ -9,7 +9,10 @@ int main(int argc, int* argv) {
 //*(array+1) = 2;
 //*(array+2) = 3;
 
-
+int a[34*2][67];
+//print((int*)" printing a[3] = ");
+a[3] = 7;
+println();
 //a[5] = 15;
 
   //int a[1 + 3];
