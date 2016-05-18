@@ -13,66 +13,66 @@ Keywords: int, while, if, else, return, void
 | = or
 {} = zero or more of it
 [] = zero or one of it
+() = group
 
 
 ```
-digit            = "0" | ... | "9" .
+digit            = "0" | ... | "9" .                                              // 1, 2, 3, 4, 5, 6, 7, 8, 9
 
-integer          = digit { digit } .
+integer          = digit { digit } .                                              //3, 6, 121, 455453242, 0
 
-letter           = "a" | ... | "z" | "A" | ... | "Z" .
+letter           = "a" | ... | "z" | "A" | ... | "Z" .                            //a, b, ... ,z, A, B, ...,Z
 
-identifier       = letter { letter | digit | "_" } .
+identifier       = letter { letter | digit | "_" } .                              //a, v, s3, a_gd4 - variable name
 
-type             = "int" [ "*" ] .
+type             = "int" [ "*" ] .                                                //int* or int
 
-array            =  identifier "[" index "]" .
+selector         = "[" expression "]" ["[" expression "]"] .                       //for 1dim and 2dim arrays               //[5],[i],[a+45],
+                                                                                  //[5*6],[25%5],[x+y-34*a],[34<<67]
 
-index      = shiftExpression . 
+cast             = "(" type ")" .                                                 //(int) or (int*)
 
-cast             = "(" type ")" .
+call             = identifier "(" [ expression { "," expression } ] ")" .         //f(a,b,c+d*a)
 
-call             = identifier "(" [ expression { "," expression } ] ")" .
+literal          = integer | "'" ascii_character "'" .                            // 45, 1, 444343, 'a', 'R'
 
-literal          = integer | "'" ascii_character "'" .
-factor           = [ cast ] 
-                    ( [ "*" ] ( identifier | "(" expression ")" ) |
-                      call |
-                      literal |
-                      """ { ascii_character } """ ) .
+factor           = [ cast ]                                                       //a, (int)a
+                    ( [ "*" ] ( identifier [ selector ] | "(" expression ")" ) |
+                      call |                                                      //(int) f(b,45), a, *a
+                      literal |                                                   // (int) 34, 45, (int) 'a', 'b'
+                      """ { ascii_character } """ ) .                             // 'b'
 
-term             = factor { ( "*" | "/" | "%" ) factor } .
+term             = factor { ( "*" | "/" | "%" ) factor } .                        //56, 56*a, 45/(int)'a'
 
-simpleExpression = [ "-" ] term { ( "+" | "-" ) term } .
+simpleExpression = [ "-" ] term { ( "+" | "-" ) term } .                          //- 45*a/(int)'a'
 
 shiftExpression  = simpleExpression { ( ">>" | "<<" ) simpleExpression } .
+
 expression       = shiftExpression [ ( "==" | "!=" | "<" | ">" | "<=" | ">=" ) shiftExpression ] .
 
-while            = "while" "(" expression ")" 
+while            = "while" "(" expression ")"
                              ( statement |
                                "{" { statement } "}" ) .
 
-if               = "if" "(" expression ")" 
-                             ( statement | 
-                               "{" { statement } "}" ) 
+if               = "if" "(" expression ")"
+                             ( statement |
+                               "{" { statement } "}" )
                          [ "else"
                              ( statement |
                                "{" { statement } "}" ) ] .
 
 return           = "return" [ expression ] .
 
-statement        = ( [ "*" ] identifier | "*" "(" expression ")" ) "="
-                      expression ";" |
-                    call ";" | 
-                    while | 
-                    if | 
+statement        = ( [ "*" ] identifier [ selector ] | "*" "(" expression ")" ) "=" expression ";" |  //int a[3] = ...;  a[6] = ;                               
+                  call ";" |
+                    while |
+                    if |
                     return ";" .
 
-variable         = type (identifier | array) .
+variable         = type identifier [selector]  .
 
-procedure        = "(" [ variable { "," variable } ] ")" 
+procedure        = "(" [ variable { "," variable } ] ")"                //(int a[10], int b[4]); or (int a[10], int b[4]){ int c[4]; c[3] = 0;}
                     ( ";" | "{" { variable ";" } { statement } "}" ) .
 
-cstar            = { type identifier [ "=" [ cast ] [ "-" ] literal ] ";" |
-                   ( "void" | type ) identifier procedure } .
-```
+cstar(R)           = { type identifier (  [ selector ] | [ "=" [ cast ] [ "-" ] literal ] ) ";" |     // int a = 3;, int a; int a[5][56]; int a[5];
+                   ( "void" | type ) identifier procedure } .                                     //void a(...){...}, int a(...){...}
