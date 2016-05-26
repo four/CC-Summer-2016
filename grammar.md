@@ -27,7 +27,7 @@ identifier       = letter { letter | digit | "_" } .                            
 
 type             = "int" [ "*" ] .                                                //int* or int
 
-selector         = "[" expression "]" ["[" expression "]"] .                       //for 1dim and 2dim arrays               //[5],[i],[a+45],
+selector         = [ ("."|"->") identifier | { "[" expression "]" ["[" expression "]"] } ] .                       //for 1dim and 2dim arrays               //[5],[i],[a+45],
                                                                                   //[5*6],[25%5],[x+y-34*a],[34<<67]
 
 cast             = "(" type ")" .                                                 //(int) or (int*)
