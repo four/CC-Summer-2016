@@ -2837,19 +2837,6 @@ int checkSymbolAfterIdentifier(int type, int* variableOrProcedureName, int* entr
       }
     }
 
-    void emitCodeForTermOperators(int operatorSymbol){
-      if (operatorSymbol == SYM_ASTERISK) {
-        emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), 0, FCT_MULTU);
-        emitRFormat(OP_SPECIAL, 0, 0, previousTemporary(), FCT_MFLO);
-      } else if (operatorSymbol == SYM_DIV) {
-        emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), 0, FCT_DIVU);
-        emitRFormat(OP_SPECIAL, 0, 0, previousTemporary(), FCT_MFLO);
-      } else if (operatorSymbol == SYM_MOD) {
-        emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), 0, FCT_DIVU);
-        emitRFormat(OP_SPECIAL, 0, 0, previousTemporary(), FCT_MFHI);
-      }
-      tfree(1);
-    }
 
     int getConstFoldValueForTerm(int operatorSymbol,int latt_const, int* attribute){
       if (operatorSymbol == SYM_ASTERISK) {
@@ -2949,8 +2936,48 @@ void emitCodeForOperator(int operatorSymbol, int ltype, int rtype){
     emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 1);
     emitIFormat(OP_BEQ, REG_ZR, REG_ZR, 2);
     emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 0);
+  }else{
+
   }
 }
+
+int foldTerm(int* attribute, int ltype, int operatorSymbol, int rtype, int latt_const, int latt_type){
+  while (isStarOrDivOrModulo()) {
+        // { ("*" | "/" | "%")}
+        operatorSymbol = symbol;
+        getSymbol();
+        //factor  =  trype}
+        rtype = gr_factor(attribute);
+
+        if (ltype != rtype){
+            typeWarning(ltype, rtype);
+        }
+        //constant folding
+        //check if the last type was a constant or not
+        if (getAttributeType(attribute) == ATT_CONSTANT) {
+            if (latt_type == 0) {
+                latt_const = getConstFoldValueForTerm(operatorSymbol, latt_const, attribute);
+            } else {
+                latt_const = getAttributeValue(attribute);
+                load_integer(latt_const);
+                emitCodeForOperator(operatorSymbol,ltype, rtype);
+            }
+        } else {
+            if (latt_type == 0) {
+                load_integer(latt_const);
+                latt_type = 1;
+            }
+            emitCodeForOperator(operatorSymbol,ltype, rtype);
+        }
+        resetAttribute(attribute);
+        }
+        //set the attribute
+        setAttributeForTerm(attribute, latt_const,latt_type);
+        // assert: allocatedTemporaries == n + 1
+        return ltype;
+}
+
+
     int gr_term(int* attribute) {
       int ltype;
       int operatorSymbol;
@@ -2973,46 +3000,10 @@ void emitCodeForOperator(int operatorSymbol, int ltype, int rtype){
         // assert: allocatedTemporaries == n + 1
       }
         resetAttribute(attribute);
-
-      // factor {("*" | "/" | "%") factor }
-      while (isStarOrDivOrModulo()) {
-        // { ("*" | "/" | "%")
-        operatorSymbol = symbol;
-        getSymbol();
-        //factor  =  trype}
-        rtype = gr_factor(attribute);
-
-        if (ltype != rtype){
-          typeWarning(ltype, rtype);
-        }
-
-        //constant folding
-        //check if the last type was a constant or not
-        if (getAttributeType(attribute) == ATT_CONSTANT) {
-          if (latt_type == 0) {
-            latt_const = getConstFoldValueForTerm(operatorSymbol, latt_const, attribute);
-          } else {
-            latt_const = getAttributeValue(attribute);
-            load_integer(latt_const);
-             emitCodeForOperator(operatorSymbol,ltype, rtype);
-          }
-        } else {
-          if (latt_type == 0) {
-            load_integer(latt_const);
-            latt_type = 1;
-          }
-          emitCodeForOperator(operatorSymbol,ltype, rtype);
-        }
-      resetAttribute(attribute);
-      }
-
-      //set the attribute
-      setAttributeForTerm(attribute, latt_const,latt_type);
-      // assert: allocatedTemporaries == n + 1
+      //do constant folding for: factor {("*" | "/" | "%") factor }
+      ltype = foldTerm(attribute, ltype, operatorSymbol, rtype, latt_const, latt_type);
       return ltype;
     }
-
-
 
 
     int checkMinusSignForSimpleExpression(){
@@ -3036,6 +3027,43 @@ void emitCodeForOperator(int operatorSymbol, int ltype, int rtype){
       return sign;
   }
 
+  int foldSimpleExpression(int* attribute, int sign, int ltype, int operatorSymbol, int rtype, int latt_const, int latt_type){
+    while (isPlusOrMinus()) {
+            operatorSymbol = symbol;
+            getSymbol();
+            rtype = gr_term(attribute);
+
+            if (getAttributeType(attribute) == ATT_CONSTANT) {
+                if (latt_type == 0) {
+                    if (operatorSymbol == SYM_PLUS) {
+                        latt_const = latt_const + getAttributeValue(attribute);
+                    } else if (operatorSymbol == SYM_MINUS) {
+                        latt_const = latt_const - getAttributeValue(attribute);
+                    }
+                } else {
+                    latt_const = getAttributeValue(attribute);
+                    load_integer(latt_const);
+                    emitCodeForOperator(operatorSymbol,ltype, rtype);
+                    latt_type = 1;
+                }
+            } else {
+                if (latt_type == 0) {
+                    load_integer(latt_const);
+                    emitCodeForOperator(operatorSymbol,ltype, rtype);
+                    latt_type = 1;
+                } else {
+                    emitCodeForOperator(operatorSymbol,ltype, rtype);
+                    latt_type = 1;
+                }
+            }
+            resetAttribute(attribute);
+        }
+        setAttributeForTerm(attribute,latt_const,latt_type);
+
+        // assert: allocatedTemporaries == n + 1
+        return ltype;
+  }
+
     int gr_simpleExpression(int* attribute) {
       int sign;
       int ltype;
@@ -3047,10 +3075,9 @@ void emitCodeForOperator(int operatorSymbol, int ltype, int rtype){
       latt_type = 0;
       latt_const = 0;
       // assert: n = allocatedTemporaries
-
       sign = checkMinusSignForSimpleExpression();
-      ltype = gr_term(attribute);
 
+      ltype = gr_term(attribute);
 
       if (getAttributeType(attribute) == ATT_CONSTANT) {
         if (sign) {
@@ -3073,47 +3100,54 @@ void emitCodeForOperator(int operatorSymbol, int ltype, int rtype){
           emitRFormat(OP_SPECIAL, REG_ZR, currentTemporary(), currentTemporary(), FCT_SUBU);
         }
         latt_type = 1;
-        // assert: allocatedTemporaries == n + 1
       }
+      // assert: allocatedTemporaries == n + 1
       resetAttribute(attribute);
 
-      while (isPlusOrMinus()) {
-        operatorSymbol = symbol;
-        getSymbol();
-        rtype = gr_term(attribute);
+        //do constant folding for: term {("+" | "-") term }
+        ltype = foldSimpleExpression(attribute, sign, ltype, operatorSymbol, rtype, latt_const, latt_type);
+        return ltype;
+    }
 
-        if (getAttributeType(attribute) == ATT_CONSTANT) {
-          if (latt_type == 0) {
-            if (operatorSymbol == SYM_PLUS) {
-              latt_const = latt_const + getAttributeValue(attribute);
-            } else if (operatorSymbol == SYM_MINUS) {
-              latt_const = latt_const - getAttributeValue(attribute);
-            }
-          } else {
-            if (latt_type == 0) {
-            } else {
-              latt_const = getAttributeValue(attribute);
-              load_integer(latt_const);
-              emitCodeForOperator(operatorSymbol,ltype, rtype);
-              latt_type = 1;
-            }
-          }
-        } else {
-          if (latt_type == 0) {
-            load_integer(latt_const);
-            emitCodeForOperator(operatorSymbol,ltype, rtype);
-            latt_type = 1;
-          } else {
-            emitCodeForOperator(operatorSymbol,ltype, rtype);
-            latt_type = 1;
-          }
-        }
-        resetAttribute(attribute);
-      }
-      setAttributeForTerm(attribute,latt_const,latt_type);
+    int foldShiftExpression(int* attribute, int ltype, int operatorSymbol, int rtype, int latt_const, int latt_type){
+      while (isShift()) {
+           operatorSymbol = symbol;
+           getSymbol();
+           rtype = gr_simpleExpression(attribute);
 
-      // assert: allocatedTemporaries == n + 1
-      return ltype;
+           if (getAttributeType(attribute) == ATT_CONSTANT) {
+
+               if (latt_type == 0) {
+                   if (operatorSymbol == SYM_LEFT_SHIFT) {
+                       latt_const = latt_const << getAttributeValue(attribute);
+                   } else if (operatorSymbol == SYM_RIGHT_SHIFT) {
+                       latt_const = latt_const >> getAttributeValue(attribute);
+                   }
+               } else {//latt_type == 1
+                   latt_const = getAttributeValue(attribute);
+                   load_integer(latt_const);
+                   emitCodeForOperator(operatorSymbol,ltype, rtype);
+               }
+
+           } else {// getAttributeType(attribute) == ATT_NOT)
+
+               if (latt_type == 0) {
+                   load_integer(latt_const);
+                   if (operatorSymbol == SYM_LEFT_SHIFT) {
+                       emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_SLLV);
+                   } else if (operatorSymbol == SYM_RIGHT_SHIFT) {
+                       emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_SRLV);
+                   }
+                   tfree(1);
+                   latt_type = 1;
+               } else {// latt_type == 1
+                   emitCodeForOperator(operatorSymbol,ltype, rtype);
+               }
+           }
+           resetAttribute(attribute);
+       }
+       setAttributeForTerm(attribute, latt_const, latt_type);
+       return ltype;
     }
 
     int  gr_shiftExpression(int* attribute){
@@ -3139,49 +3173,178 @@ void emitCodeForOperator(int operatorSymbol, int ltype, int rtype){
       }
       resetAttribute(attribute);
 
-      while (isShift()) {
-        operatorSymbol = symbol;
-        getSymbol();
-        rtype = gr_simpleExpression(attribute);
-
-        if (getAttributeType(attribute) == ATT_CONSTANT) {
-
-          if (latt_type == 0) {
-            if (operatorSymbol == SYM_LEFT_SHIFT) {
-              latt_const = latt_const << getAttributeValue(attribute);
-            } else if (operatorSymbol == SYM_RIGHT_SHIFT) {
-              latt_const = latt_const >> getAttributeValue(attribute);
-            }
-          } else {//latt_type == 1
-              latt_const = getAttributeValue(attribute);
-              load_integer(latt_const);
-              emitCodeForOperator(operatorSymbol,ltype, rtype);
-          }
-
-        } else {// getAttributeType(attribute) == ATT_NOT)
-
-          if (latt_type == 0) {
-            load_integer(latt_const);
-            if (operatorSymbol == SYM_LEFT_SHIFT) {
-              emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_SLLV);
-            } else if (operatorSymbol == SYM_RIGHT_SHIFT) {
-              emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_SRLV);
-            }
-            tfree(1);
-            latt_type = 1;
-          } else {// latt_type == 1
-            emitCodeForOperator(operatorSymbol,ltype, rtype);
-          }
-        }
-        resetAttribute(attribute);
-      }
-      setAttributeForTerm(attribute, latt_const, latt_type);
-
-      // assert: allocatedTemporaries == n + 1
+      ltype = foldShiftExpression(attribute, ltype, operatorSymbol, rtype, latt_const, latt_type);
       return ltype;
     }
 
 
+int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype, int latt_const, int latt_type){
+  if (isComparison()) {
+            operatorSymbol = symbol;
+            getSymbol();
+            rtype = gr_shiftExpression(attribute);
+            // assert: allocatedTemporakries == n + 2
+            if (ltype != rtype){
+                typeWarning(ltype, rtype);
+            }
+
+            //shiftExpression ==
+            if (operatorSymbol == SYM_EQUALITY) {
+
+                if (getAttributeType(attribute) == ATT_CONSTANT) {
+
+                    if (latt_type == 0) {
+
+                        if (latt_const == getAttributeValue(attribute)) {
+                            latt_const = 1;
+                        } else {
+                            latt_const = 0;
+                        }
+                    } else {//latt_type == 1
+                        load_integer(getAttributeValue(attribute));
+                    }
+
+                } else {//getAttributeType(attribute) == ATT_NOT
+                    if (latt_type == 0) {
+                        load_integer(latt_const);
+                        latt_type = 1;
+                    }
+                }
+                //emits code for constant folding
+                if (latt_type == 1) {
+                    emitCodeForOperator(operatorSymbol,ltype, rtype);
+                }
+
+                //shiftExpression !=
+            } else if (operatorSymbol == SYM_NOTEQ) {
+
+                if (getAttributeType(attribute) == ATT_CONSTANT) {
+                    if (latt_type == 0) {
+
+                        if (latt_const - getAttributeValue(attribute) == 0) {
+                            latt_const = 0;
+                        } else {
+                            latt_const = 1;
+                        }
+
+                    } else {//latt_type == 1
+                        load_integer(getAttributeValue(attribute));
+                    }
+
+                } else {//getAttributeType(attribute) == ATT_NOT
+
+                    if (latt_type == 0) {
+                        load_integer(latt_const);
+                        latt_type = 1;
+                    }
+                }
+                if (latt_type == 1) {
+                    emitCodeForOperator(operatorSymbol,ltype, rtype);
+                }
+
+            } else if (operatorSymbol == SYM_LT) {
+                if (getAttributeType(attribute) == ATT_CONSTANT) {
+                    if (latt_type == 0) {
+                        if (latt_const < getAttributeValue(attribute)) {
+                            latt_const = 1;
+                        } else {
+                            latt_const = 0;
+                        }
+                    } else {
+                        load_integer(getAttributeValue(attribute));
+                        emitCodeForOperator(operatorSymbol,ltype, rtype);
+                    }
+                } else {
+                    if (latt_type == 0) {
+                        load_integer(latt_const);
+                        latt_type = 1;
+                        emitRFormat(OP_SPECIAL, currentTemporary(), previousTemporary(), previousTemporary(), FCT_SLT);
+                        tfree(1);
+                    } else {
+                        emitCodeForOperator(operatorSymbol,ltype, rtype);
+                    }
+                }
+            } else if (operatorSymbol == SYM_GT) {
+                if (getAttributeType(attribute) == ATT_CONSTANT) {
+                    if (latt_type == 0) {
+                        if (latt_const > getAttributeValue(attribute)) {
+                            latt_const = 1;
+                        } else {
+                            latt_const = 0;
+                        }
+                    } else {
+                        load_integer(getAttributeValue(attribute));
+                        emitCodeForOperator(operatorSymbol,ltype, rtype);
+                    }
+                } else {
+                    if (latt_type == 0) {
+                        load_integer(latt_const);
+                        latt_type = 1;
+                        emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_SLT);
+                        tfree(1);
+                    } else {
+                        emitCodeForOperator(operatorSymbol,ltype, rtype);
+                    }
+                }
+            } else if (operatorSymbol == SYM_LEQ) {
+                if (getAttributeType(attribute) == ATT_CONSTANT) {
+                    if (latt_type == 0) {
+                        if (getAttributeValue(attribute) <= latt_const) {
+                            latt_const = 0;
+                        } else {
+                            latt_const = 1;
+                        }
+                    } else {
+                        load_integer(getAttributeValue(attribute));
+                        emitCodeForOperator(operatorSymbol,ltype, rtype);
+                    }
+                } else {
+                    if (latt_type == 0) {
+                        load_integer(latt_const);
+                        emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_SLT);
+                        tfree(1);
+                        emitIFormat(OP_BNE, REG_ZR, currentTemporary(), 4);
+                        emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 1);
+                        emitIFormat(OP_BEQ, REG_ZR, REG_ZR, 2);
+                        emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 0);
+                        latt_type = 1;
+                    } else {
+                        emitCodeForOperator(operatorSymbol,ltype, rtype);
+                    }
+                }
+            } else if (operatorSymbol == SYM_GEQ) {
+                if (getAttributeType(attribute) == ATT_CONSTANT) {
+                    if (latt_type == 0) {
+                        if (latt_const >= getAttributeValue(attribute)) {
+                            latt_const = 0;
+                        } else {
+                            latt_const = 1;
+                        }
+                    } else {
+                        load_integer(getAttributeValue(attribute));
+                        emitCodeForOperator(operatorSymbol,ltype, rtype);
+                    }
+                } else {
+                    if (latt_type == 0) {
+                        load_integer(latt_const);
+                        emitRFormat(OP_SPECIAL, currentTemporary(), previousTemporary(), previousTemporary(), FCT_SLT);
+                        tfree(1);
+                        emitIFormat(OP_BNE, REG_ZR, currentTemporary(), 4);
+                        emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 1);
+                        emitIFormat(OP_BEQ, REG_ZR, REG_ZR, 2);
+                        emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 0);
+                        latt_type = 1;
+                    } else {
+                        emitCodeForOperator(operatorSymbol,ltype, rtype);
+                    }
+                }
+            }
+        }
+        setAttributeForTerm(attribute, latt_const, latt_type);
+
+        // assert: allocatedTemporaries == n + 1
+      return ltype;
+}
 
     int gr_expression(int* attribute) {
       int ltype;
@@ -3204,172 +3367,7 @@ void emitCodeForOperator(int operatorSymbol, int ltype, int rtype){
 
 
       // assert: allocatedTemporaries == n + 1
-      if (isComparison()) {
-        operatorSymbol = symbol;
-        getSymbol();
-        rtype = gr_shiftExpression(attribute);
-        // assert: allocatedTemporakries == n + 2
-        if (ltype != rtype){
-          typeWarning(ltype, rtype);
-        }
-
-         //shiftExpression ==
-        if (operatorSymbol == SYM_EQUALITY) {
-
-          if (getAttributeType(attribute) == ATT_CONSTANT) {
-
-            if (latt_type == 0) {
-
-              if (latt_const == getAttributeValue(attribute)) {
-                latt_const = 1;
-              } else {
-                latt_const = 0;
-              }
-            } else {//latt_type == 1
-              load_integer(getAttributeValue(attribute));
-            }
-
-          } else {//getAttributeType(attribute) == ATT_NOT
-            if (latt_type == 0) {
-              load_integer(latt_const);
-              latt_type = 1;
-            }
-          }
-          //emits code for constant folding
-          if (latt_type == 1) {
-            emitCodeForOperator(operatorSymbol,ltype, rtype);
-          }
-
-          //shiftExpression !=
-        } else if (operatorSymbol == SYM_NOTEQ) {
-
-          if (getAttributeType(attribute) == ATT_CONSTANT) {
-            if (latt_type == 0) {
-
-              if (latt_const - getAttributeValue(attribute) == 0) {
-                latt_const = 0;
-              } else {
-                latt_const = 1;
-              }
-
-            } else {//latt_type == 1
-              load_integer(getAttributeValue(attribute));
-            }
-
-          } else {//getAttributeType(attribute) == ATT_NOT
-
-            if (latt_type == 0) {
-              load_integer(latt_const);
-              latt_type = 1;
-            }
-
-          }
-
-          if (latt_type == 1) {
-            emitCodeForOperator(operatorSymbol,ltype, rtype);
-          }
-
-        } else if (operatorSymbol == SYM_LT) {
-          if (getAttributeType(attribute) == ATT_CONSTANT) {
-            if (latt_type == 0) {
-              if (latt_const < getAttributeValue(attribute)) {
-                latt_const = 1;
-              } else {
-                latt_const = 0;
-              }
-            } else {
-              load_integer(getAttributeValue(attribute));
-              emitCodeForOperator(operatorSymbol,ltype, rtype);
-            }
-          } else {
-            if (latt_type == 0) {
-              load_integer(latt_const);
-              latt_type = 1;
-              emitRFormat(OP_SPECIAL, currentTemporary(), previousTemporary(), previousTemporary(), FCT_SLT);
-              tfree(1);
-            } else {
-              emitCodeForOperator(operatorSymbol,ltype, rtype);
-            }
-          }
-        } else if (operatorSymbol == SYM_GT) {
-          if (getAttributeType(attribute) == ATT_CONSTANT) {
-            if (latt_type == 0) {
-              if (latt_const > getAttributeValue(attribute)) {
-                latt_const = 1;
-              } else {
-                latt_const = 0;
-              }
-            } else {
-              load_integer(getAttributeValue(attribute));
-              emitCodeForOperator(operatorSymbol,ltype, rtype);
-            }
-          } else {
-            if (latt_type == 0) {
-              load_integer(latt_const);
-              latt_type = 1;
-              emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_SLT);
-              tfree(1);
-            } else {
-              emitCodeForOperator(operatorSymbol,ltype, rtype);
-            }
-          }
-        } else if (operatorSymbol == SYM_LEQ) {
-          if (getAttributeType(attribute) == ATT_CONSTANT) {
-            if (latt_type == 0) {
-              if (getAttributeValue(attribute) <= latt_const) {
-                latt_const = 0;
-              } else {
-                latt_const = 1;
-              }
-            } else {
-              load_integer(getAttributeValue(attribute));
-              emitCodeForOperator(operatorSymbol,ltype, rtype);
-            }
-          } else {
-            if (latt_type == 0) {
-              load_integer(latt_const);
-              emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_SLT);
-              tfree(1);
-              emitIFormat(OP_BNE, REG_ZR, currentTemporary(), 4);
-              emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 1);
-              emitIFormat(OP_BEQ, REG_ZR, REG_ZR, 2);
-              emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 0);
-              latt_type = 1;
-            } else {
-              emitCodeForOperator(operatorSymbol,ltype, rtype);
-            }
-          }
-        } else if (operatorSymbol == SYM_GEQ) {
-          if (getAttributeType(attribute) == ATT_CONSTANT) {
-            if (latt_type == 0) {
-              if (latt_const >= getAttributeValue(attribute)) {
-                latt_const = 0;
-              } else {
-                latt_const = 1;
-              }
-            } else {
-              load_integer(getAttributeValue(attribute));
-              emitCodeForOperator(operatorSymbol,ltype, rtype);
-            }
-          } else {
-            if (latt_type == 0) {
-              load_integer(latt_const);
-              emitRFormat(OP_SPECIAL, currentTemporary(), previousTemporary(), previousTemporary(), FCT_SLT);
-              tfree(1);
-              emitIFormat(OP_BNE, REG_ZR, currentTemporary(), 4);
-              emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 1);
-              emitIFormat(OP_BEQ, REG_ZR, REG_ZR, 2);
-              emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 0);
-              latt_type = 1;
-            } else {
-              emitCodeForOperator(operatorSymbol,ltype, rtype);
-            }
-          }
-        }
-      }
-      setAttributeForTerm(attribute, latt_const, latt_type);
-
-      // assert: allocatedTemporaries == n + 1
+      ltype = foldExpression(attribute, ltype, operatorSymbol, rtype, latt_const, latt_type);
       return ltype;
     }
 
