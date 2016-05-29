@@ -2870,6 +2870,87 @@ void setAttributeForTerm(int* attribute, int latt_const, int latt_type){
     resetAttribute(attribute);
   }
 }
+
+void emitCodeForOperator(int operatorSymbol, int ltype, int rtype){
+  // term operator symbols ( "*" | "/" | "%" )
+  if (operatorSymbol == SYM_ASTERISK) { // "*"
+    emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), 0, FCT_MULTU);
+    emitRFormat(OP_SPECIAL, 0, 0, previousTemporary(), FCT_MFLO);
+    tfree(1);
+
+  } else if (operatorSymbol == SYM_DIV) {// "/"
+    emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), 0, FCT_DIVU);
+    emitRFormat(OP_SPECIAL, 0, 0, previousTemporary(), FCT_MFLO);
+    tfree(1);
+
+    // simple expression operator symbols ( "+" | "-" )
+  } else if (operatorSymbol == SYM_MOD) {// "%"
+    emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), 0, FCT_DIVU);
+    emitRFormat(OP_SPECIAL, 0, 0, previousTemporary(), FCT_MFHI);
+    tfree(1);
+
+  }else if (operatorSymbol == SYM_PLUS) {// "+"
+    if (ltype == INTSTAR_T) {
+        if (rtype == INT_T){  emitLeftShiftBy(2);  }
+        } else if (rtype == INTSTAR_T){  typeWarning(ltype, rtype);  }
+    emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_ADDU);
+    tfree(1);
+
+  } else if (operatorSymbol == SYM_MINUS) {// "-"
+    if (ltype != rtype){  typeWarning(ltype, rtype);  }
+    emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_SUBU);
+    tfree(1);
+
+//shift expression operator symbols ( "<<" | ">>"  )
+  }else if (operatorSymbol == SYM_LEFT_SHIFT) {// "<<"
+      emitRFormat(OP_SPECIAL, currentTemporary(), previousTemporary(), previousTemporary(), FCT_SLLV);
+      tfree(1);
+  } else if (operatorSymbol == SYM_RIGHT_SHIFT) {// ">>"
+      emitRFormat(OP_SPECIAL, currentTemporary(), previousTemporary(), previousTemporary(), FCT_SRLV);
+      tfree(1);
+
+    // expression operator symbols ( "==" | "!=" | "<" | ">"| "<=" | ">=" )
+  } else if(operatorSymbol == SYM_EQUALITY){// ==
+    emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_SUBU);
+    tfree(1);
+    emitIFormat(OP_BEQ, REG_ZR, currentTemporary(), 4);
+    emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 0);
+    emitIFormat(OP_BEQ, REG_ZR, currentTemporary(), 2);
+    emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 1);
+
+  }else if(operatorSymbol == SYM_NOTEQ){// "!="
+    emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_SUBU);
+    tfree(1);
+    emitIFormat(OP_BNE, REG_ZR, currentTemporary(), 4);
+    emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 0);
+    emitIFormat(OP_BEQ, REG_ZR, currentTemporary(), 2);
+    emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 1);
+
+  }else if(operatorSymbol == SYM_LT){ // "<"
+    emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_SLT);
+    tfree(1);
+
+  }else if(operatorSymbol == SYM_GT){ // ">"
+    emitRFormat(OP_SPECIAL, currentTemporary(), previousTemporary(), previousTemporary(), FCT_SLT);
+    tfree(1);
+
+  }else if(operatorSymbol == SYM_LEQ){// "<="
+    emitRFormat(OP_SPECIAL, currentTemporary(), previousTemporary(), previousTemporary(), FCT_SLT);
+    tfree(1);
+    emitIFormat(OP_BNE, REG_ZR, currentTemporary(), 4);
+    emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 1);
+    emitIFormat(OP_BEQ, REG_ZR, REG_ZR, 2);
+    emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 0);
+
+  }else if(operatorSymbol == SYM_GEQ){// ">="
+    emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_SLT);
+    tfree(1);
+    emitIFormat(OP_BNE, REG_ZR, currentTemporary(), 4);
+    emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 1);
+    emitIFormat(OP_BEQ, REG_ZR, REG_ZR, 2);
+    emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 0);
+  }
+}
     int gr_term(int* attribute) {
       int ltype;
       int operatorSymbol;
@@ -2885,7 +2966,6 @@ void setAttributeForTerm(int* attribute, int latt_const, int latt_type){
       ltype = gr_factor(attribute);
 
       if (getAttributeType(attribute) == ATT_CONSTANT) {
-        // constant
         latt_const = getAttributeValue(attribute);
         latt_type = 0;
       } else {
@@ -2914,14 +2994,14 @@ void setAttributeForTerm(int* attribute, int latt_const, int latt_type){
           } else {
             latt_const = getAttributeValue(attribute);
             load_integer(latt_const);
-            emitCodeForTermOperators(operatorSymbol);
+             emitCodeForOperator(operatorSymbol,ltype, rtype);
           }
         } else {
           if (latt_type == 0) {
             load_integer(latt_const);
             latt_type = 1;
           }
-          emitCodeForTermOperators(operatorSymbol);
+          emitCodeForOperator(operatorSymbol,ltype, rtype);
         }
       resetAttribute(attribute);
       }
@@ -2933,26 +3013,7 @@ void setAttributeForTerm(int* attribute, int latt_const, int latt_type){
     }
 
 
-    int emitCodeForConstantFoldInSimpleExpression(int operatorSymbol, int ltype, int rtype, int latt_type){
-        if (operatorSymbol == SYM_PLUS) {
-            if (ltype == INTSTAR_T) {
-                if (rtype == INT_T){
-                    emitLeftShiftBy(2);
-                }
-            } else if (rtype == INTSTAR_T){
-                typeWarning(ltype, rtype);
-            }
-            emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_ADDU);
-        } else if (operatorSymbol == SYM_MINUS) {
-            if (ltype != rtype){
-                typeWarning(ltype, rtype);
-            }
-            emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_SUBU);
-        }
-        tfree(1);
-        latt_type = 1;
-        return latt_type;
-    }
+
 
     int checkMinusSignForSimpleExpression(){
       int sign;
@@ -3033,15 +3094,18 @@ void setAttributeForTerm(int* attribute, int latt_const, int latt_type){
             } else {
               latt_const = getAttributeValue(attribute);
               load_integer(latt_const);
-              latt_type = emitCodeForConstantFoldInSimpleExpression(operatorSymbol, ltype, rtype, latt_type);
+              emitCodeForOperator(operatorSymbol,ltype, rtype);
+              latt_type = 1;
             }
           }
         } else {
           if (latt_type == 0) {
             load_integer(latt_const);
-            latt_type = emitCodeForConstantFoldInSimpleExpression(operatorSymbol, ltype, rtype, latt_type);
+            emitCodeForOperator(operatorSymbol,ltype, rtype);
+            latt_type = 1;
           } else {
-            latt_type = emitCodeForConstantFoldInSimpleExpression(operatorSymbol, ltype, rtype, latt_type);
+            emitCodeForOperator(operatorSymbol,ltype, rtype);
+            latt_type = 1;
           }
         }
         resetAttribute(attribute);
@@ -3074,32 +3138,28 @@ void setAttributeForTerm(int* attribute, int latt_const, int latt_type){
         // assert: allocatedTemporaries == n + 1
       }
       resetAttribute(attribute);
+
       while (isShift()) {
         operatorSymbol = symbol;
         getSymbol();
         rtype = gr_simpleExpression(attribute);
+
         if (getAttributeType(attribute) == ATT_CONSTANT) {
+
           if (latt_type == 0) {
             if (operatorSymbol == SYM_LEFT_SHIFT) {
               latt_const = latt_const << getAttributeValue(attribute);
             } else if (operatorSymbol == SYM_RIGHT_SHIFT) {
               latt_const = latt_const >> getAttributeValue(attribute);
             }
-          } else {
-            if (latt_type == 0) {
-            } else {
+          } else {//latt_type == 1
               latt_const = getAttributeValue(attribute);
               load_integer(latt_const);
-              if (operatorSymbol == SYM_LEFT_SHIFT) {
-                emitRFormat(OP_SPECIAL, currentTemporary(), previousTemporary(), previousTemporary(), FCT_SLLV);
-              } else if (operatorSymbol == SYM_RIGHT_SHIFT) {
-                emitRFormat(OP_SPECIAL, currentTemporary(), previousTemporary(), previousTemporary(), FCT_SRLV);
-              }
-              tfree(1);
-              latt_type = 1;
-            }
+              emitCodeForOperator(operatorSymbol,ltype, rtype);
           }
-        } else {
+
+        } else {// getAttributeType(attribute) == ATT_NOT)
+
           if (latt_type == 0) {
             load_integer(latt_const);
             if (operatorSymbol == SYM_LEFT_SHIFT) {
@@ -3109,14 +3169,8 @@ void setAttributeForTerm(int* attribute, int latt_const, int latt_type){
             }
             tfree(1);
             latt_type = 1;
-          } else {
-            if (operatorSymbol == SYM_LEFT_SHIFT) {
-              emitRFormat(OP_SPECIAL, currentTemporary(), previousTemporary(), previousTemporary(), FCT_SLLV);
-            } else if (operatorSymbol == SYM_RIGHT_SHIFT) {
-              emitRFormat(OP_SPECIAL, currentTemporary(), previousTemporary(), previousTemporary(), FCT_SRLV);
-            }
-            tfree(1);
-            latt_type = 1;
+          } else {// latt_type == 1
+            emitCodeForOperator(operatorSymbol,ltype, rtype);
           }
         }
         resetAttribute(attribute);
@@ -3126,6 +3180,8 @@ void setAttributeForTerm(int* attribute, int latt_const, int latt_type){
       // assert: allocatedTemporaries == n + 1
       return ltype;
     }
+
+
 
     int gr_expression(int* attribute) {
       int ltype;
@@ -3143,9 +3199,10 @@ void setAttributeForTerm(int* attribute, int latt_const, int latt_type){
         latt_const = getAttributeValue(attribute);
       } else {
         latt_type = 1;
-        // assert: allocatedTemporaries == n + 1
       }
       resetAttribute(attribute);
+
+
       // assert: allocatedTemporaries == n + 1
       if (isComparison()) {
         operatorSymbol = symbol;
@@ -3155,56 +3212,63 @@ void setAttributeForTerm(int* attribute, int latt_const, int latt_type){
         if (ltype != rtype){
           typeWarning(ltype, rtype);
         }
+
+         //shiftExpression ==
         if (operatorSymbol == SYM_EQUALITY) {
+
           if (getAttributeType(attribute) == ATT_CONSTANT) {
+
             if (latt_type == 0) {
+
               if (latt_const == getAttributeValue(attribute)) {
                 latt_const = 1;
               } else {
                 latt_const = 0;
               }
-            } else {
+            } else {//latt_type == 1
               load_integer(getAttributeValue(attribute));
             }
-          } else {
+
+          } else {//getAttributeType(attribute) == ATT_NOT
             if (latt_type == 0) {
               load_integer(latt_const);
               latt_type = 1;
             }
           }
+          //emits code for constant folding
           if (latt_type == 1) {
-            emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_SUBU);
-            tfree(1);
-            emitIFormat(OP_BEQ, REG_ZR, currentTemporary(), 4);
-            emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 0);
-            emitIFormat(OP_BEQ, REG_ZR, currentTemporary(), 2);
-            emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 1);
+            emitCodeForOperator(operatorSymbol,ltype, rtype);
           }
+
+          //shiftExpression !=
         } else if (operatorSymbol == SYM_NOTEQ) {
+
           if (getAttributeType(attribute) == ATT_CONSTANT) {
             if (latt_type == 0) {
+
               if (latt_const - getAttributeValue(attribute) == 0) {
                 latt_const = 0;
               } else {
                 latt_const = 1;
               }
-            } else {
+
+            } else {//latt_type == 1
               load_integer(getAttributeValue(attribute));
             }
-          } else {
+
+          } else {//getAttributeType(attribute) == ATT_NOT
+
             if (latt_type == 0) {
               load_integer(latt_const);
               latt_type = 1;
             }
+
           }
+
           if (latt_type == 1) {
-            emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_SUBU);
-            tfree(1);
-            emitIFormat(OP_BNE, REG_ZR, currentTemporary(), 4);
-            emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 0);
-            emitIFormat(OP_BEQ, REG_ZR, currentTemporary(), 2);
-            emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 1);
+            emitCodeForOperator(operatorSymbol,ltype, rtype);
           }
+
         } else if (operatorSymbol == SYM_LT) {
           if (getAttributeType(attribute) == ATT_CONSTANT) {
             if (latt_type == 0) {
@@ -3215,8 +3279,7 @@ void setAttributeForTerm(int* attribute, int latt_const, int latt_type){
               }
             } else {
               load_integer(getAttributeValue(attribute));
-              emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_SLT);
-              tfree(1);
+              emitCodeForOperator(operatorSymbol,ltype, rtype);
             }
           } else {
             if (latt_type == 0) {
@@ -3225,8 +3288,7 @@ void setAttributeForTerm(int* attribute, int latt_const, int latt_type){
               emitRFormat(OP_SPECIAL, currentTemporary(), previousTemporary(), previousTemporary(), FCT_SLT);
               tfree(1);
             } else {
-              emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_SLT);
-              tfree(1);
+              emitCodeForOperator(operatorSymbol,ltype, rtype);
             }
           }
         } else if (operatorSymbol == SYM_GT) {
@@ -3239,8 +3301,7 @@ void setAttributeForTerm(int* attribute, int latt_const, int latt_type){
               }
             } else {
               load_integer(getAttributeValue(attribute));
-              emitRFormat(OP_SPECIAL, currentTemporary(), previousTemporary(), previousTemporary(), FCT_SLT);
-              tfree(1);
+              emitCodeForOperator(operatorSymbol,ltype, rtype);
             }
           } else {
             if (latt_type == 0) {
@@ -3249,8 +3310,7 @@ void setAttributeForTerm(int* attribute, int latt_const, int latt_type){
               emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_SLT);
               tfree(1);
             } else {
-              emitRFormat(OP_SPECIAL, currentTemporary(), previousTemporary(), previousTemporary(), FCT_SLT);
-              tfree(1);
+              emitCodeForOperator(operatorSymbol,ltype, rtype);
             }
           }
         } else if (operatorSymbol == SYM_LEQ) {
@@ -3263,12 +3323,7 @@ void setAttributeForTerm(int* attribute, int latt_const, int latt_type){
               }
             } else {
               load_integer(getAttributeValue(attribute));
-              emitRFormat(OP_SPECIAL, currentTemporary(), previousTemporary(), previousTemporary(), FCT_SLT);
-              tfree(1);
-              emitIFormat(OP_BNE, REG_ZR, currentTemporary(), 4);
-              emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 1);
-              emitIFormat(OP_BEQ, REG_ZR, REG_ZR, 2);
-              emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 0);
+              emitCodeForOperator(operatorSymbol,ltype, rtype);
             }
           } else {
             if (latt_type == 0) {
@@ -3281,12 +3336,7 @@ void setAttributeForTerm(int* attribute, int latt_const, int latt_type){
               emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 0);
               latt_type = 1;
             } else {
-              emitRFormat(OP_SPECIAL, currentTemporary(), previousTemporary(), previousTemporary(), FCT_SLT);
-              tfree(1);
-              emitIFormat(OP_BNE, REG_ZR, currentTemporary(), 4);
-              emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 1);
-              emitIFormat(OP_BEQ, REG_ZR, REG_ZR, 2);
-              emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 0);
+              emitCodeForOperator(operatorSymbol,ltype, rtype);
             }
           }
         } else if (operatorSymbol == SYM_GEQ) {
@@ -3299,12 +3349,7 @@ void setAttributeForTerm(int* attribute, int latt_const, int latt_type){
               }
             } else {
               load_integer(getAttributeValue(attribute));
-              emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_SLT);
-              tfree(1);
-              emitIFormat(OP_BNE, REG_ZR, currentTemporary(), 4);
-              emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 1);
-              emitIFormat(OP_BEQ, REG_ZR, REG_ZR, 2);
-              emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 0);
+              emitCodeForOperator(operatorSymbol,ltype, rtype);
             }
           } else {
             if (latt_type == 0) {
@@ -3317,12 +3362,7 @@ void setAttributeForTerm(int* attribute, int latt_const, int latt_type){
               emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 0);
               latt_type = 1;
             } else {
-              emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_SLT);
-              tfree(1);
-              emitIFormat(OP_BNE, REG_ZR, currentTemporary(), 4);
-              emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 1);
-              emitIFormat(OP_BEQ, REG_ZR, REG_ZR, 2);
-              emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 0);
+              emitCodeForOperator(operatorSymbol,ltype, rtype);
             }
           }
         }
