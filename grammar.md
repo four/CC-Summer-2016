@@ -25,7 +25,7 @@ letter           = "a" | ... | "z" | "A" | ... | "Z" .                          
 
 identifier       = letter { letter | digit | "_" } .                              //a, v, s3, a_gd4 - variable name
 
-type             = "int" [ "*" ] .                                                //int* or int
+type             = "int" [ "*" ] | "struct" identifier "*".                                                //int* or int
 
 selector         = [ ("."|"->") identifier | { "[" expression "]" ["[" expression "]"] } ] .                       //for 1dim and 2dim arrays               //[5],[i],[a+45],
                                                                                   //[5*6],[25%5],[x+y-34*a],[34<<67]
@@ -40,6 +40,7 @@ factor           = [ cast ]                                                     
                     ( [ "*" ] ( identifier [ selector ] | "(" expression ")" ) |
                       call |                                                      //(int) f(b,45), a, *a
                       literal |                                                   // (int) 34, 45, (int) 'a', 'b'
+                      "struct" identifier "->" identifier |
                       """ { ascii_character } """ ) .                             // 'b'
 
 term             = factor { ( "*" | "/" | "%" ) factor } .                        //56, 56*a, 45/(int)'a'
@@ -69,7 +70,9 @@ statement        = ( [ "*" ] identifier [ selector ] | "*" "(" expression ")" ) 
                     if |
                     return ";" .
 
-variable         = type identifier [selector]  .
+variable         = type identifier [ "[" integer "]" ] | "struct" identifier "*" identifier.
+
+struct           = "struct" identifier "{" { variable ";" } "}" ";"
 
 procedure        = "(" [ variable { "," variable } ] ")"                //(int a[10], int b[4]); or (int a[10], int b[4]){ int c[4]; c[3] = 0;}
                     ( ";" | "{" { variable ";" } { statement } "}" ) .
