@@ -143,6 +143,8 @@ int CHAR_DOUBLEQUOTE  = '"';
 int CHAR_LBRACKET     = '[';
 int CHAR_RBRACKET     = ']';
 int CHAR_DOT          = '.';//for the pointers in the STRUCT
+//int CHAR_AND          = '&';
+//int CHAR_I            = '|';
 
 int SIZEOFINT     = 4; // must be the same as WORDSIZE
 int SIZEOFINTSTAR = 4; // must be the same as WORDSIZE
@@ -283,8 +285,12 @@ int getSymbol();
     int SYM_LBRACKET     = 30; // [
     int SYM_RBRACKET     = 31; // ]
     int SYM_STRUCT       = 32; // STRUCT
-    int SYM_DOT          = 33;// POINTER SYMBOL FOR THE STRUCT
-    int SYM_ARROW        = 34;//REFERENCE SYMBOL FOR THE STRUCT
+    int SYM_DOT          = 33; // POINTER SYMBOL FOR THE STRUCT
+    int SYM_ARROW        = 34; //REFERENCE SYMBOL FOR THE STRUCT
+  //  int SYM_AND          = 35; //'&&';
+  //  int SYM_OR           = 36; // '||';
+  //  int SYM_NOT          = 37; //"!";
+
 
     // array of strings representing symbols
     int SYMBOLS[35][2];
@@ -367,6 +373,9 @@ int getSymbol();
       SYMBOLS [SYM_STRUCT][0]       = (int) "struct";
       SYMBOLS [SYM_DOT][0]          = (int) ".";
       SYMBOLS [SYM_ARROW][0]        = (int) "->";
+    //  SYMBOLS [SYM_AND][0]          = (int) "&&";
+    //  SYMBOLS [SYM_OR][0]           = (int) "||";
+    //  SYMBOLS [SYM_NOT][0]           = (int) "!";
 
       character = CHAR_EOF;
       symbol  = SYM_EOF;
@@ -1989,14 +1998,21 @@ int getSymbol();
           getCharacter();
 
           symbol = SYM_EQUALITY;
-        } else
-        symbol = SYM_ASSIGN;
+        } else{
+          symbol = SYM_ASSIGN;
+        }
 
       } else if (character == CHAR_LPARENTHESIS) {
         getCharacter();
 
         symbol = SYM_LPARENTHESIS;
+      //} else if (character == CHAR_AND) {
+      //  getCharacter();
+//if(character == CHAR_AND){
+      //    getCharacter();
 
+      //    symbol = SYM_AND;
+      //  }
       } else if (character == CHAR_RPARENTHESIS) {
         getCharacter();
 
@@ -2052,14 +2068,20 @@ int getSymbol();
         }
       } else if (character == CHAR_EXCLAMATION) {
         getCharacter();
-
-        if (character == CHAR_EQUAL)
-        getCharacter();
-        else
+      //  symbol = SYM_NOT;
+        if (character == CHAR_EQUAL){
+          getCharacter();
+        }else{
         syntaxErrorCharacter(CHAR_EQUAL);
-
+        }
         symbol = SYM_NOTEQ;
 
+      //}else if(character == CHAR_I){
+      //  getCharacter();
+      //  if(character == CHAR_I){
+      //    getCharacter();
+      //      symbol = SYM_OR;
+      //  }
       } else if (character == CHAR_PERCENTAGE) {
         getCharacter();
 
@@ -2669,6 +2691,8 @@ int checkRParenthesisForCall(int type, int* entry, int* procedure){
   }
   return type;
 }
+
+//call = identifier "(" [ expression { "," expression } ] ")" .
     int gr_call(int* procedure) {
       int* entry;
       int numberOfTemporaries;
@@ -2758,7 +2782,13 @@ int checkSymbolAfterIdentifier(int type, int* variableOrProcedureName, int* entr
   return type;
 }
 
-    int gr_factor(int* attribute) {
+
+//factor           = [ cast ]
+//                    ( [ "*" ] ( identifier [ selector ] | "(" expression ")")|
+//                      call |
+//                      literal |
+//                      """ { ascii_character } """ ) .
+int gr_factor(int* attribute) {
       int hasCast;
       int cast;
       int type;
@@ -2837,8 +2867,7 @@ int checkSymbolAfterIdentifier(int type, int* variableOrProcedureName, int* entr
       }
     }
 
-
-    int getConstFoldValueForTerm(int operatorSymbol,int latt_const, int* attribute){
+int getConstFoldValueForTerm(int operatorSymbol,int latt_const, int* attribute){
       if (operatorSymbol == SYM_ASTERISK) {
         latt_const = latt_const * getAttributeValue(attribute);
       } else if (operatorSymbol == SYM_DIV) {
@@ -2941,7 +2970,22 @@ void emitCodeForOperator(int operatorSymbol, int ltype, int rtype){
   }
 }
 
-int foldTerm(int* attribute, int ltype, int operatorSymbol, int rtype, int latt_const, int latt_type){
+int foldTerm(int* attribute, int ltype, int operatorSymbol, int rtype){
+  int latt_const;
+  int latt_type;
+
+  latt_type = 0;
+  latt_const = 0;
+
+  if (getAttributeType(attribute) == ATT_CONSTANT) {
+    latt_const = getAttributeValue(attribute);
+    latt_type = 0;
+  } else {
+    latt_type = 1;
+    // assert: allocatedTemporaries == n + 1
+  }
+    resetAttribute(attribute);
+
   while (isStarOrDivOrModulo()) {
         // { ("*" | "/" | "%")}
         operatorSymbol = symbol;
@@ -2978,35 +3022,24 @@ int foldTerm(int* attribute, int ltype, int operatorSymbol, int rtype, int latt_
 }
 
 
+//term = factor { ( "*" | "/" | "%" ) factor } .
     int gr_term(int* attribute) {
       int ltype;
       int operatorSymbol;
       int rtype;
-      int latt_const;
-      int latt_type;
-
-      latt_type = 0;
-      latt_const = 0;
+      rtype = 0;
       // assert: n = allocatedTemporaries
 
       //factor = ltype
       ltype = gr_factor(attribute);
 
-      if (getAttributeType(attribute) == ATT_CONSTANT) {
-        latt_const = getAttributeValue(attribute);
-        latt_type = 0;
-      } else {
-        latt_type = 1;
-        // assert: allocatedTemporaries == n + 1
-      }
-        resetAttribute(attribute);
       //do constant folding for: factor {("*" | "/" | "%") factor }
-      ltype = foldTerm(attribute, ltype, operatorSymbol, rtype, latt_const, latt_type);
+      ltype = foldTerm(attribute, ltype, operatorSymbol, rtype);
       return ltype;
     }
 
 
-    int checkMinusSignForSimpleExpression(){
+    int checkMinusSign(){
       int sign;
       if (symbol == SYM_MINUS) {
           sign = 1;
@@ -3025,9 +3058,40 @@ int foldTerm(int* attribute, int ltype, int operatorSymbol, int rtype, int latt_
       }
 
       return sign;
-  }
+      }
 
-  int foldSimpleExpression(int* attribute, int sign, int ltype, int operatorSymbol, int rtype, int latt_const, int latt_type){
+  int foldSimpleExpression(int* attribute, int sign, int ltype, int operatorSymbol, int rtype){
+    int latt_const;
+    int latt_type;
+
+    latt_type = 0;
+    latt_const = 0;
+
+    if (getAttributeType(attribute) == ATT_CONSTANT) {
+      if (sign) {
+        if (ltype != INT_T) {
+          typeWarning(INT_T, ltype);
+          ltype = INT_T;
+        }
+        latt_const = - getAttributeValue(attribute);
+      } else {
+        latt_const = getAttributeValue(attribute);
+      }
+      latt_type = 0;
+      resetAttribute(attribute);
+    } else {
+      if (sign) {
+        if (ltype != INT_T) {
+          typeWarning(INT_T, ltype);
+          ltype = INT_T;
+        }
+        emitRFormat(OP_SPECIAL, REG_ZR, currentTemporary(), currentTemporary(), FCT_SUBU);
+      }
+      latt_type = 1;
+    }
+    // assert: allocatedTemporaries == n + 1
+    resetAttribute(attribute);
+
     while (isPlusOrMinus()) {
             operatorSymbol = symbol;
             getSymbol();
@@ -3064,52 +3128,38 @@ int foldTerm(int* attribute, int ltype, int operatorSymbol, int rtype, int latt_
         return ltype;
   }
 
+//  simpleExpression = [ "-" ] term { ( "+" | "-" ) term } .
     int gr_simpleExpression(int* attribute) {
       int sign;
       int ltype;
       int operatorSymbol;
       int rtype;
+      rtype = 0;
+
+      // assert: n = allocatedTemporaries
+      sign = checkMinusSign();
+      ltype = gr_term(attribute);
+        //do constant folding for: term {("+" | "-") term }
+      ltype = foldSimpleExpression(attribute, sign, ltype, operatorSymbol, rtype);
+      return ltype;
+    }
+
+    int foldShiftExpression(int* attribute, int ltype, int operatorSymbol, int rtype){
       int latt_const;
       int latt_type;
-
       latt_type = 0;
       latt_const = 0;
-      // assert: n = allocatedTemporaries
-      sign = checkMinusSignForSimpleExpression();
-
-      ltype = gr_term(attribute);
 
       if (getAttributeType(attribute) == ATT_CONSTANT) {
-        if (sign) {
-          if (ltype != INT_T) {
-            typeWarning(INT_T, ltype);
-            ltype = INT_T;
-          }
-          latt_const = - getAttributeValue(attribute);
-        } else {
-          latt_const = getAttributeValue(attribute);
-        }
+        latt_const = getAttributeValue(attribute);
         latt_type = 0;
         resetAttribute(attribute);
       } else {
-        if (sign) {
-          if (ltype != INT_T) {
-            typeWarning(INT_T, ltype);
-            ltype = INT_T;
-          }
-          emitRFormat(OP_SPECIAL, REG_ZR, currentTemporary(), currentTemporary(), FCT_SUBU);
-        }
         latt_type = 1;
+        // assert: allocatedTemporaries == n + 1
       }
-      // assert: allocatedTemporaries == n + 1
       resetAttribute(attribute);
 
-        //do constant folding for: term {("+" | "-") term }
-        ltype = foldSimpleExpression(attribute, sign, ltype, operatorSymbol, rtype, latt_const, latt_type);
-        return ltype;
-    }
-
-    int foldShiftExpression(int* attribute, int ltype, int operatorSymbol, int rtype, int latt_const, int latt_type){
       while (isShift()) {
            operatorSymbol = symbol;
            getSymbol();
@@ -3150,35 +3200,34 @@ int foldTerm(int* attribute, int ltype, int operatorSymbol, int rtype, int latt_
        return ltype;
     }
 
+//    shiftExpression = simpleExpression { ( ">>" | "<<" ) simpleExpression } .
     int  gr_shiftExpression(int* attribute){
       int ltype;
       int operatorSymbol;
       int rtype;
-      int latt_const;
-      int latt_type;
-
-      latt_type = 0;
-      latt_const = 0;
+      rtype = 0;
 
       // assert: n = allocatedTemporaries
-
       ltype = gr_simpleExpression(attribute);
-      if (getAttributeType(attribute) == ATT_CONSTANT) {
-        latt_const = getAttributeValue(attribute);
-        latt_type = 0;
-        resetAttribute(attribute);
-      } else {
-        latt_type = 1;
-        // assert: allocatedTemporaries == n + 1
-      }
-      resetAttribute(attribute);
-
-      ltype = foldShiftExpression(attribute, ltype, operatorSymbol, rtype, latt_const, latt_type);
+      ltype = foldShiftExpression(attribute, ltype, operatorSymbol, rtype);
       return ltype;
     }
 
 
-int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype, int latt_const, int latt_type){
+int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype){
+  int latt_const;
+  int latt_type;
+  latt_type = 0;
+  latt_const = 0;
+
+  if (getAttributeType(attribute) == ATT_CONSTANT) {
+    latt_const = getAttributeValue(attribute);
+  } else {
+    latt_type = 1;
+  }
+
+  resetAttribute(attribute);
+
   if (isComparison()) {
             operatorSymbol = symbol;
             getSymbol();
@@ -3346,31 +3395,22 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype, int
       return ltype;
 }
 
+//expression       = shiftExpression [ ( "==" | "!=" | "<" | ">" | "<=" | ">=" ) shiftExpression ] .
     int gr_expression(int* attribute) {
       int ltype;
       int operatorSymbol;
       int rtype;
-      int latt_const;
-      int latt_type;
+      rtype = 0;
 
-      latt_type = 0;
-      latt_const = 0;
       // assert: n = allocatedTemporaries
       ltype = gr_shiftExpression(attribute);
-
-      if (getAttributeType(attribute) == ATT_CONSTANT) {
-        latt_const = getAttributeValue(attribute);
-      } else {
-        latt_type = 1;
-      }
-      resetAttribute(attribute);
-
-
       // assert: allocatedTemporaries == n + 1
-      ltype = foldExpression(attribute, ltype, operatorSymbol, rtype, latt_const, latt_type);
+      ltype = foldExpression(attribute, ltype, operatorSymbol, rtype);
       return ltype;
     }
 
+    //while  = "while" "(" expression ")"   //lazy evaluation - more difficult, jumps, TO GENERATE a F-jump  FIXUP CHAIN  for &&, and T-jump fixup chain for ||
+    //          ( "{" { statement } "}" | statement ) .
     void gr_while() {
       int brBackToWhile;
       int brForwardToEnd;
@@ -3380,24 +3420,31 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype, int
       // assert: allocatedTemporaries == 0
       brBackToWhile = binaryLength;
       brForwardToEnd = 0;
-
+      //"while"
       if (symbol == SYM_WHILE) {
         getSymbol();
+        //while "("
         if (symbol == SYM_LPARENTHESIS) {
           getSymbol();
+          // "while" "(" expression
           gr_expression(attribute);
           loadConstantBeforeNonConstant(attribute);
           brForwardToEnd = binaryLength;
           emitIFormat(OP_BEQ, REG_ZR, currentTemporary(), 0);
           tfree(1);
+          // "while" "(" expression ")"
           if (symbol == SYM_RPARENTHESIS) {
             getSymbol();
+              // "while" "(" expression ")" "{"
             if (symbol == SYM_LBRACE) {
               getSymbol();
+              // "while" "(" expression ")" "{" {statement}
               while (isNotRbraceOrEOF()){
                 gr_statement();
               }
+                // "while" "(" expression ")" "{" {statement} "}"
               checkSymbolOrExit(SYM_RBRACE);
+                // "while" "(" expression ")" statement
             } else{
               gr_statement();
             }
@@ -3410,13 +3457,21 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype, int
       } else{
         syntaxErrorSymbol(SYM_WHILE);
       }
+      //emit code for while
       emitIFormat(OP_BEQ, REG_ZR, REG_ZR, (brBackToWhile - binaryLength - WORDSIZE) / WORDSIZE);
+
+      //fixup
       if (brForwardToEnd != 0){
         fixup_relative(brForwardToEnd);
       }
       // assert: allocatedTemporaries == 0
     }
 
+//    if               = "if" "(" expression ")"                                //lazy evaluation - more difficult jumps
+//                                 (  "{" { statement } "}" | statement )
+//                             [ "else"
+//                                 ( statement |
+//                                   "{" { statement } "}" ) ] .
     void gr_if() {
       int brForwardToElseOrEnd;
       int brForwardToEnd;
@@ -3424,46 +3479,60 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype, int
 
       attribute = createAttribute();
       // assert: allocatedTemporaries == 0
+      //if
       if (symbol == SYM_IF) {
         getSymbol();
+        // if "("
         if (symbol == SYM_LPARENTHESIS) {
           getSymbol();
+          // if "(" expression
           gr_expression(attribute);
           loadConstantBeforeNonConstant(attribute);
           brForwardToElseOrEnd = binaryLength;
           emitIFormat(OP_BEQ, REG_ZR, currentTemporary(), 0);
           tfree(1);
+            // if "(" expression ")"
           if (symbol == SYM_RPARENTHESIS) {
             getSymbol();
+            //  if "(" expression ")" "{"
             if (symbol == SYM_LBRACE) {
               getSymbol();
+            //  if "(" expression ")" "{" {statemrnt}
               while (isNotRbraceOrEOF()){
                 gr_statement();
               }
+                //  if "(" expression ")" "{" {statemrnt} "}"
               checkSymbolOrExit(SYM_RBRACE);
             }  else{
               gr_statement();
             }
+            //else
             if (symbol == SYM_ELSE) {
               getSymbol();
               brForwardToEnd = binaryLength;
               emitIFormat(OP_BEQ, REG_ZR, REG_ZR, 0);
               fixup_relative(brForwardToElseOrEnd);
+              //else "{"
               if (symbol == SYM_LBRACE) {
                 getSymbol();
+                  // else "{" { statement }
                 while (isNotRbraceOrEOF()){
                   gr_statement();
                 }
+                  // else "{" { statement } "}"
                 checkSymbolOrExit(SYM_RBRACE);
+                //else statement
               } else{
                 gr_statement();
               }
               fixup_relative(brForwardToEnd);
+
             } else{
               fixup_relative(brForwardToElseOrEnd);
             }
-          } else
-          syntaxErrorSymbol(SYM_RPARENTHESIS);
+          } else{
+            syntaxErrorSymbol(SYM_RPARENTHESIS);
+          }
         } else
         syntaxErrorSymbol(SYM_LPARENTHESIS);
       } else
@@ -3472,6 +3541,9 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype, int
       // assert: allocatedTemporaries == 0
     }
 
+//    booleanExpression = shiftExpression {("&&" | "||" ) shiftExpression}   .
+
+// return  = "return" [ expression ] .
     void gr_return(int returnType) {
       int type;
       int* attribute;
@@ -3496,6 +3568,11 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype, int
       // assert: allocatedTemporaries == 0
     }
 
+//statement        = ( [ "*" ] identifier [ selector ] | "*" "(" expression ")" ) "=" expression ";" |  // a[3] = ...;  a[6] = ;
+//                  call ";" |
+//                    while |
+//                    if |
+//                    return ";" .
     void gr_statement() {
       int ltype;
       int rtype;
@@ -3740,8 +3817,18 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype, int
       return type;
     }
 
+    int parseSelectorDeclaration(int size){
+      getSymbol();
+      if(isLiteral()){
+        size = literal;
+      }
+      getSymbol();
+      checkSymbolAndGetNew(SYM_RBRACKET);
 
+      return size;
+    }
 
+//variable  = type identifier [selector]  . (local variable declaration)
     void gr_variable(int offset) {
       int type;
       int expressionType;
@@ -3750,27 +3837,20 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype, int
 
       length1D = 1;
       length2D = 1;
+
+        // type
       type = gr_type();
 
+     //type identifier
       if (symbol == SYM_IDENTIFIER) {
         getSymbol();
         //1Darray
         if(symbol == SYM_LBRACKET){
           type = INTARRAY_T;
-          getSymbol();
-          if(isLiteral()){
-            length1D = literal;
-          }
-          getSymbol();
-          checkSymbolAndGetNew(SYM_RBRACKET);
+            length1D = parseSelectorDeclaration(length1D);
           // 2Darray
           if (symbol == SYM_LBRACKET) {
-            getSymbol();
-            if(isLiteral()){
-              length2D = literal;
-            }
-            getSymbol();
-            checkSymbolAndGetNew(SYM_RBRACKET);
+            length2D = parseSelectorDeclaration(length2D);
             length1D  = length1D  * length2D;
           }
           if(offset < 0){
@@ -3778,12 +3858,14 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype, int
           }
         }
         createSymbolTableEntry(LOCAL_TABLE, identifier, lineNumber, VARIABLE, type, 0, offset, length1D,length2D);
+        //error handlings
       } else {
         syntaxErrorSymbol(SYM_IDENTIFIER);
         createSymbolTableEntry(LOCAL_TABLE, (int*) "missing variable name", lineNumber, VARIABLE, type, 0, offset, 1,1);
       }
     }
 
+//  //global initialisation in cstar: ...= - literal or ...= (int*) literal or  ...= - (int) literal
     void gr_initialization(int* name, int offset, int type) {
       int actualLineNumber;
       int hasCast;
@@ -3793,35 +3875,27 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype, int
       actualLineNumber = lineNumber;
       initialValue = 0;
       hasCast = 0;
+      // "="
       if (symbol == SYM_ASSIGN) {
         getSymbol();
-        // optional cast: [ cast ]
+        // optional cast:  = [ cast ]
         if (symbol == SYM_LPARENTHESIS) {
           hasCast = 1;
           getSymbol();
           cast = gr_type();
           checkSymbol(SYM_RPARENTHESIS);
         }
-        // optional: -
-        if (symbol == SYM_MINUS) {
-          sign = 1;
-          mayBeINTMIN = 1;
-          isINTMIN  = 0;
-          getSymbol();
-          mayBeINTMIN = 0;
-          if (isINTMIN) {
-            isINTMIN = 0;
-            sign = 0;
-          }
-        } else{
-          sign = 0;
-        }
+        // optional: = -
+        sign = checkMinusSign();
+
+        //"=" literal
         if (isLiteral()) {
           initialValue = literal;
           getSymbol();
           if (sign){
             initialValue = -initialValue;
           }
+          //error handlings
         } else{
           syntaxErrorUnexpected();
         }
@@ -3829,6 +3903,7 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype, int
       } else{
         syntaxErrorSymbol(SYM_ASSIGN);
       }
+
       if (hasCast) {
         if (type != cast){
           typeWarning(type, cast);
@@ -3836,9 +3911,13 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype, int
       } else if (type != INT_T){
         typeWarning(type, INT_T);
       }
+      //global initialisation: ...= - literal or ...= (int*) literal or  ...= - (int) literal
       createSymbolTableEntry(GLOBAL_TABLE, name, actualLineNumber, VARIABLE, type, initialValue, offset, 1,1);
     }
 
+
+//procedure = "(" [ variable { "," variable } ] ")"
+//            ( ";" | "{" { variable ";" } { statement } "}" ) .
     void gr_procedure(int* procedure, int returnType) {
       int numberOfParameters;
       int parameters;
@@ -3848,12 +3927,14 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype, int
 
       currentProcedureName = procedure;
       numberOfParameters = 0;
-      // ( variable , variable ) ;
+      //"("
       if (symbol == SYM_LPARENTHESIS) {
         getSymbol();
+          //"(" variable ")" or variable?
         if (symbol != SYM_RPARENTHESIS) {
           gr_variable(0);
           numberOfParameters = 1;
+            //"(" variable, ... ,
           while (symbol == SYM_COMMA) {
             getSymbol();
             gr_variable(0);
@@ -3861,13 +3942,16 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype, int
           }
           entry = local_symbol_table;
           parameters = 0;
+
           while (parameters < numberOfParameters) {
             setAddress(entry, parameters * WORDSIZE + 2 * WORDSIZE);
             parameters = parameters + 1;
             entry = getNextEntry(entry);
           }
+            //"(" variable, ... , ... ")"
           if (symbol == SYM_RPARENTHESIS){
           getSymbol();
+          //error handlings
           }else{
             syntaxErrorSymbol(SYM_RPARENTHESIS);
           }
@@ -3878,18 +3962,24 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype, int
         syntaxErrorSymbol(SYM_LPARENTHESIS);
       }
 
+        //"("")" ";" or (" variable, ... , ... ")" ";" ?
       if (symbol == SYM_SEMICOLON) {
         entry = getSymbolTableEntry(currentProcedureName, PROCEDURE);
         if (entry == (int*) 0){
+          //procedure call: ...(); or ...(variable, variable, ...);
           createSymbolTableEntry(GLOBAL_TABLE, currentProcedureName, lineNumber, PROCEDURE, returnType, 0, 0, 1,1);
         }
         getSymbol();
-        // ( variable, variable ) { variable; variable; statement }
+
+        // "("")" "{" or (" variable, ... , ... ")" "{"  //variable = type identifier
       } else if (symbol == SYM_LBRACE) {
         functionStart = binaryLength;
         entry = getSymbolTableEntry(currentProcedureName, PROCEDURE);
         if (entry == (int*) 0){
+          //procedure declaration: ...(){...} or ...(variable, ...){....}
         createSymbolTableEntry(GLOBAL_TABLE, currentProcedureName, lineNumber, PROCEDURE, returnType, 0, binaryLength, 1,1);
+
+        //()... or (variable, ...)...? - error handling
       }else {
           if (getAddress(entry) != 0) {
             if (getOpcode(loadBinary(getAddress(entry))) == OP_JAL){
@@ -3910,6 +4000,8 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype, int
         }
         getSymbol();
         localVariables = 0;
+        //      (){ local variables declarationa and initialisations}
+        // or  (variable, ...){local variables declarationa and initialisations}
         while (symbol == SYM_INT) {
           localVariables = localVariables + 1;
           gr_variable(-localVariables * WORDSIZE);
@@ -3917,11 +4009,14 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype, int
           localVariables = localVariables + get1dArrayLength(entry) * get2dArrayLength(entry) - 1;
           checkSymbol(SYM_SEMICOLON);
         }
+
         help_procedure_prologue(localVariables);
         returnBranches = 0;
+        //()"{"...; statement...statement...
         while (isNotRbraceOrEOF()){
           gr_statement();
         }
+          //()"{"...; statement...statement..."}"
         checkSymbolOrExit(SYM_RBRACE);
         fixlink_absolute(returnBranches, binaryLength);
         returnBranches = 0;
@@ -3933,6 +4028,9 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype, int
       // assert: allocatedTemporaries == 0
     }
 
+
+//cstar  = {( "void" | type ) identifier (procedure | "{ fields}")  |
+//           type identifier (  [ selector ] | [ "=" [ cast ] [ "-" ] literal ] ) ";"} . //"=" [ cast ] [ "-" ] literal = initialisation
     void gr_cstar() {
       int type;
       int* variableOrProcedureName;
@@ -3945,22 +4043,28 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype, int
       int fields;
 
       while (symbol != SYM_EOF) {
+
         while (lookForType()) {
           syntaxErrorUnexpected();
           checkEOF();
         }
+        // "void"
         if (symbol == SYM_VOID) {
           type = VOID_T;
           getSymbol();
+        //   "void" identifier
           if (symbol == SYM_IDENTIFIER) {
             variableOrProcedureName = identifier;
             getSymbol();
+          //   "void"  identifier procedure
             gr_procedure(variableOrProcedureName, type);
           } else{
             syntaxErrorSymbol(SYM_IDENTIFIER);
           }
+          //type
         } else {
           type = gr_type();
+          //type identifier
           if (symbol == SYM_IDENTIFIER) {
             variableOrProcedureName = identifier;
             size = 1;
@@ -3971,9 +4075,9 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype, int
             // type identifier "(" procedure declaration or definition
             if (symbol == SYM_LPARENTHESIS){
               gr_procedure(variableOrProcedureName, type);
-            }
-            //struct identifier "{"....."}"
-            else if(symbol == SYM_LBRACE){
+
+              //type identifier "{"....."}" = struct
+            } else if(symbol == SYM_LBRACE){
               if(type != STRUCT_T){
                 syntaxErrorSymbol(SYM_STRUCT);
               }
@@ -3981,6 +4085,7 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype, int
               getSymbol();
               createSymbolTableEntry(GLOBAL_TABLE, variableOrProcedureName,lineNumber, STRUCT, type, 0, binaryLength, 1, 1);
               entry = getSymbolTableEntry(variableOrProcedureName, STRUCT);
+
               while(lookForType() == 0){
                 size = 1;
                 array1dLength = 1;
@@ -3989,25 +4094,15 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype, int
                 if(symbol == SYM_IDENTIFIER){
                   getSymbol();
                   type = isStarStruct(type);
-                  //type identifier "[" selector "]" ["[" selector "]"]
+                  //in struct declaration: type identifier "[" selector "]" ["[" selector "]"]
                   //1dim array
                   if(symbol == SYM_LBRACKET){
                     type = INTARRAY_T;
-                    getSymbol();
-                    if(isLiteral()){
-                      array1dLength = literal;
-                    }
+                    array1dLength = parseSelectorDeclaration(array1dLength);
                     size = literal;
-                    getSymbol();
-                    checkSymbolAndGetNew(SYM_RBRACKET);
                     //2dim array
                     if(symbol == SYM_LBRACKET){
-                      getSymbol();
-                      if(isLiteral()){
-                        array2dLength = literal;
-                      }
-                      getSymbol();
-                      checkSymbolAndGetNew(SYM_RBRACKET);
+                      array2dLength = parseSelectorDeclaration(array2dLength);
                       size =  array1dLength * array2dLength;
                     }
                     fields = fields + (array1dLength - 1);
@@ -4025,8 +4120,9 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype, int
               checkSymbol(SYM_RBRACE);
               set1dArrayLength(entry,fields);
               checkSymbolAndGetNew(SYM_SEMICOLON);
+
+              // type identifier selector = array
             }else if(symbol == SYM_LBRACKET){
-              // type identifier selector
               type = INTARRAY_T;
               getSymbol();
               if (isLiteral()){
@@ -4037,12 +4133,7 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype, int
                   size = array1dLength;
                   // 2D selector
                   if (symbol == SYM_LBRACKET) {
-                    getSymbol();
-                    if (isLiteral()){
-                      array2dLength = literal;
-                    }
-                    getSymbol();
-                    checkSymbolAndGetNew(SYM_RBRACKET);
+                    array2dLength =  parseSelectorDeclaration(array2dLength);
                     size = array1dLength * array2dLength;
                   }
                 }else{
@@ -4054,6 +4145,7 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype, int
               }else{
                 syntaxErrorSymbol(SYM_INTEGER);
               }
+
             }else {
               allocatedMemory = allocatedMemory + WORDSIZE;
               // type identifier ";" global variable declaration
@@ -4061,7 +4153,7 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype, int
                 createSymbolTableEntry(GLOBAL_TABLE, variableOrProcedureName, lineNumber, VARIABLE, type, 0, -allocatedMemory, 1,1);
                 getSymbol();
                 // type identifier "=" global variable definition
-              } else{
+              } else {
                 gr_initialization(variableOrProcedureName, -allocatedMemory, type);
               }
             }
