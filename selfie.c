@@ -3167,6 +3167,67 @@ int foldTerm(int* attribute, int ltype, int operatorSymbol, int rtype){
       int rtype;
       rtype = 0;
 
+      int gr_expression(int* attribute) {
+        int brToEnd;
+        int ltype;
+        int rtype;
+        int prevType;
+        int* head;
+        int* fjump;
+        
+        prevType = 0;
+        
+        ltype = gr_andExpression(attribute);
+        
+        if (symbol == SYM_OR) {
+          if (*(attribute) == 1) {
+            if (*(attribute + 1) < 0) {
+              load_integer(*(attribute + 1) * (-1));
+              emitRFormat(OP_SPECIAL, REG_ZR, currentTemporary(), currentTemporary(), FCT_SUBU);
+            } else {
+              load_integer(*(attribute + 1));
+            }
+          }
+          
+          *(attribute) = 0;
+          *(attribute + 1) = 0;
+          
+          prevType = 1;
+          
+          *(attribute + 3) = (int) createListEntry(binaryLength);
+          head = (int*) * (attribute + 3);
+          emitIFormat(OP_BNE, REG_ZR, currentTemporary(), 0);
+        }
+        
+        while (symbol == SYM_OR) {
+          getSymbol();
+          rtype = gr_andExpression(attribute);
+          
+          if (*(attribute) == 1) {
+            if (*(attribute + 1) < 0) {
+              load_integer(*(attribute + 1) * (-1));
+              emitRFormat(OP_SPECIAL, REG_ZR, currentTemporary(), currentTemporary(), FCT_SUBU);
+            } else {
+              load_integer(*(attribute + 1));
+            }
+          }
+          
+          *(attribute) = 0;
+          *(attribute + 1) = 0;
+          
+          *(head + 1) = (int) createListEntry(binaryLength);
+          head = (int*) * (head + 1);
+          emitIFormat(OP_BNE, REG_ZR, currentTemporary(), 0);
+        }
+        
+        if (prevType == 1) {
+          *(attribute) = 0;
+          *(attribute + 1) = 0;
+        }
+        
+        return ltype;
+      }
+      
 //    int gr_expression(int* attribute) {
 //      int ltype;
 //      int operatorSymbol;
@@ -3964,9 +4025,9 @@ int foldTerm(int* attribute, int ltype, int operatorSymbol, int rtype){
       int brBackToWhile;
       int brForwardToEnd;
       
-      int* constantVal;
+      int* attribute;
       
-      constantVal = malloc(2 * SIZEOFINT);
+      attribute = malloc(2 * SIZEOFINT);
       
       // assert: allocatedTemporaries == 0
       
