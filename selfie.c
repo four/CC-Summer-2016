@@ -143,6 +143,8 @@ int CHAR_DOUBLEQUOTE  = '"';
 int CHAR_LBRACKET     = '[';
 int CHAR_RBRACKET     = ']';
 int CHAR_DOT          = '.';//for the pointers in the STRUCT
+int CHAR_PIPE         = '|';
+int CHAR_AMPERSAND    = '&';
 
 int SIZEOFINT     = 4; // must be the same as WORDSIZE
 int SIZEOFINTSTAR = 4; // must be the same as WORDSIZE
@@ -285,9 +287,12 @@ int getSymbol();
     int SYM_STRUCT       = 32; // STRUCT
     int SYM_DOT          = 33;// POINTER SYMBOL FOR THE STRUCT
     int SYM_ARROW        = 34;//REFERENCE SYMBOL FOR THE STRUCT
+    int SYM_AND          = 35; //&&
+    int SYM_OR           = 36; //||
+
 
     // array of strings representing symbols
-    int SYMBOLS[35][2];
+    int SYMBOLS[38][2];
 
     struct struct_1 {
       int a;
@@ -367,11 +372,13 @@ int getSymbol();
       SYMBOLS [SYM_STRUCT][0]       = (int) "struct";
       SYMBOLS [SYM_DOT][0]          = (int) ".";
       SYMBOLS [SYM_ARROW][0]        = (int) "->";
+      SYMBOLS [SYM_AND][0]          = (int) "&&";
+      SYMBOLS [SYM_OR][0]          = (int) "||";
 
       character = CHAR_EOF;
       symbol  = SYM_EOF;
 
-      while (counter < 35) {
+      while (counter < 37) {
         SYMBOLS[counter][1] = 0;
         counter = counter + 1;
       }
@@ -552,6 +559,8 @@ int getSymbol();
     int  gr_term(int* attribute);
     int  gr_simpleExpression(int* attribute);
     int  gr_shiftExpression(int * attribute);
+    int  gr_compareExpression(int* attribute);
+    int  gr_andExpression(int* attribute);
     int  gr_expression(int* attribute);
     void gr_while();
     void gr_if();
@@ -1764,6 +1773,11 @@ int getSymbol();
       return 0;
     }
 
+//    int isCharacterDigit() {
+//      if(character >= '0' && character <='9')
+//        return 1;
+//    }
+
     int isCharacterDigit() {
       if (character >= '0')
       if (character <= '9')
@@ -2006,6 +2020,19 @@ int getSymbol();
         getCharacter();
 
         symbol = SYM_RBRACKET;
+        
+      } else if (character == CHAR_AMPERSAND){
+          getCharacter();
+          if (character == CHAR_AMPERSAND){
+            getCharacter();
+            symbol = SYM_AND;
+          }
+      } else if (character == CHAR_PIPE) {
+        getCharacter();
+        if (character == CHAR_PIPE){
+          getCharacter();
+          symbol = SYM_OR;
+        }
 
       } else if (character == CHAR_LBRACE) {
         getCharacter();
@@ -3276,399 +3303,939 @@ int getSymbol();
 
     }
 
-    int gr_expression(int* attribute) {
+
+    int gr_expression(int* constantVal) {
+      int brToEnd;
+      int ltype;
+      int rtype;
+      int prevType;
+      int* head;
+      int* fjump;
+      
+      prevType = 0;
+      
+      ltype = gr_andExpression(constantVal);
+      
+      if (symbol == SYM_OR) {
+        if (*(constantVal) == 1) {
+          if (*(constantVal + 1) < 0) {
+            load_integer(*(constantVal + 1) * (-1));
+            emitRFormat(OP_SPECIAL, REG_ZR, currentTemporary(), currentTemporary(), FCT_SUBU);
+          } else {
+            load_integer(*(constantVal + 1));
+          }
+        }
+        
+        *(constantVal) = 0;
+        *(constantVal + 1) = 0;
+        
+        prevType = 1;
+        
+        *(constantVal + 3) = (int) createListEntry(binaryLength);
+        head = (int*) * (constantVal + 3);
+        emitIFormat(OP_BNE, REG_ZR, currentTemporary(), 0);
+      }
+      
+      while (symbol == SYM_OR) {
+        getSymbol();
+        rtype = gr_andExpression(constantVal);
+        
+        if (*(constantVal) == 1) {
+          if (*(constantVal + 1) < 0) {
+            load_integer(*(constantVal + 1) * (-1));
+            emitRFormat(OP_SPECIAL, REG_ZR, currentTemporary(), currentTemporary(), FCT_SUBU);
+          } else {
+            load_integer(*(constantVal + 1));
+          }
+        }
+        
+        *(constantVal) = 0;
+        *(constantVal + 1) = 0;
+        
+        *(head + 1) = (int) createListEntry(binaryLength);
+        head = (int*) * (head + 1);
+        emitIFormat(OP_BNE, REG_ZR, currentTemporary(), 0);
+      }
+      
+      if (prevType == 1) {
+        *(constantVal) = 0;
+        *(constantVal + 1) = 0;
+      }
+      
+      return ltype;
+    }
+
+//    int gr_expression(int* attribute) {
+//      int ltype;
+//      int operatorSymbol;
+//      int rtype;
+//      int latt_const;
+//      int latt_type;
+//
+//      latt_type = 0;
+//      latt_const = 0;
+//
+//      // assert: n = allocatedTemporaries
+//      ltype = gr_shiftExpression(attribute);
+//
+//      if (getAttributeType(attribute) == ATT_CONSTANT) {
+//
+//        latt_const = getAttributeValue(attribute);
+//      } else {
+//        latt_type = 1;
+//        // assert: allocatedTemporaries == n + 1
+//      }
+//
+//      resetAttribute(attribute);
+//
+//
+//      // assert: allocatedTemporaries == n + 1
+//
+//
+//      if (isComparison()) {
+//        operatorSymbol = symbol;
+//
+//        getSymbol();
+//
+//        rtype = gr_shiftExpression(attribute);
+//
+//        // assert: allocatedTemporakries == n + 2
+//
+//        if (ltype != rtype)
+//        typeWarning(ltype, rtype);
+//
+//        if (operatorSymbol == SYM_EQUALITY) {
+//
+//          if (getAttributeType(attribute) == ATT_CONSTANT) {
+//            if (latt_type == 0) {
+//
+//              if (latt_const == getAttributeValue(attribute)) {
+//
+//                latt_const = 1;
+//              } else {
+//
+//                latt_const = 0;
+//              }
+//            } else {
+//              load_integer(getAttributeValue(attribute));
+//              latt_type = 1;
+//            }
+//          } else {
+//            if (latt_type == 0) {
+//              load_integer(latt_const);
+//              latt_type = 1;
+//            }
+//          }
+//
+//          if (latt_type == 1) {
+//
+//            emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_SUBU);
+//
+//            tfree(1);
+//
+//            emitIFormat(OP_BEQ, REG_ZR, currentTemporary(), 4);
+//            emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 0);
+//            emitIFormat(OP_BEQ, REG_ZR, currentTemporary(), 2);
+//            emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 1);
+//          }
+//
+//        } else if (operatorSymbol == SYM_NOTEQ) {
+//
+//          if (getAttributeType(attribute) == ATT_CONSTANT) {
+//            if (latt_type == 0) {
+//
+//              if (latt_const - getAttributeValue(attribute) == 0) {
+//
+//                latt_const = 0;
+//              } else {
+//
+//                latt_const = 1;
+//              }
+//            } else {
+//              load_integer(getAttributeValue(attribute));
+//              latt_type = 1;
+//            }
+//          } else {
+//            if (latt_type == 0) {
+//              load_integer(latt_const);
+//              latt_type = 1;
+//            }
+//          }
+//
+//          if (latt_type == 1) {
+//
+//            emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_SUBU);
+//
+//            tfree(1);
+//
+//            emitIFormat(OP_BNE, REG_ZR, currentTemporary(), 4);
+//            emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 0);
+//            emitIFormat(OP_BEQ, REG_ZR, currentTemporary(), 2);
+//            emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 1);
+//          }
+//
+//        } else if (operatorSymbol == SYM_LT) {
+//
+//          if (getAttributeType(attribute) == ATT_CONSTANT) {
+//            if (latt_type == 0) {
+//
+//              if (latt_const < getAttributeValue(attribute)) {
+//
+//                latt_const = 1;
+//              } else {
+//
+//                latt_const = 0;
+//              }
+//            } else {
+//              load_integer(getAttributeValue(attribute));
+//              latt_type = 1;
+//
+//
+//              emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_SLT);
+//
+//              tfree(1);
+//
+//            }
+//          } else {
+//            if (latt_type == 0) {
+//              load_integer(latt_const);
+//              latt_type = 1;
+//
+//
+//              emitRFormat(OP_SPECIAL, currentTemporary(), previousTemporary(), previousTemporary(), FCT_SLT);
+//
+//              tfree(1);
+//
+//            } else {
+//              latt_type = 1;
+//
+//
+//              emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_SLT);
+//
+//              tfree(1);
+//            }
+//          }
+//
+//        } else if (operatorSymbol == SYM_GT) {
+//
+//          if (getAttributeType(attribute) == ATT_CONSTANT) {
+//            if (latt_type == 0) {
+//
+//              if (latt_const > getAttributeValue(attribute)) {
+//
+//                latt_const = 1;
+//              } else {
+//
+//                latt_const = 0;
+//              }
+//            } else {
+//              load_integer(getAttributeValue(attribute));
+//              latt_type = 1;
+//
+//
+//              emitRFormat(OP_SPECIAL, currentTemporary(), previousTemporary(), previousTemporary(), FCT_SLT);
+//
+//              tfree(1);
+//
+//            }
+//          } else {
+//            if (latt_type == 0) {
+//              load_integer(latt_const);
+//              latt_type = 1;
+//
+//
+//              emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_SLT);
+//
+//
+//              tfree(1);
+//
+//            } else {
+//              latt_type = 1;
+//
+//
+//              emitRFormat(OP_SPECIAL, currentTemporary(), previousTemporary(), previousTemporary(), FCT_SLT);
+//
+//
+//              tfree(1);
+//
+//            }
+//          }
+//
+//
+//        } else if (operatorSymbol == SYM_LEQ) {
+//
+//          if (getAttributeType(attribute) == ATT_CONSTANT) {
+//            if (latt_type == 0) {
+//
+//              if (getAttributeValue(attribute) <= latt_const) {
+//
+//                latt_const = 0;
+//              } else {
+//
+//                latt_const = 1;
+//              }
+//            } else {
+//              load_integer(getAttributeValue(attribute));
+//              latt_type = 1;
+//
+//
+//              emitRFormat(OP_SPECIAL, currentTemporary(), previousTemporary(), previousTemporary(), FCT_SLT);
+//
+//              tfree(1);
+//
+//              emitIFormat(OP_BNE, REG_ZR, currentTemporary(), 4);
+//              emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 1);
+//              emitIFormat(OP_BEQ, REG_ZR, REG_ZR, 2);
+//              emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 0);
+//
+//            }
+//          } else {
+//            if (latt_type == 0) {
+//              load_integer(latt_const);
+//              latt_type = 1;
+//
+//
+//              emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_SLT);
+//
+//              tfree(1);
+//
+//              emitIFormat(OP_BNE, REG_ZR, currentTemporary(), 4);
+//              emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 1);
+//              emitIFormat(OP_BEQ, REG_ZR, REG_ZR, 2);
+//              emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 0);
+//
+//            } else {
+//
+//              emitRFormat(OP_SPECIAL, currentTemporary(), previousTemporary(), previousTemporary(), FCT_SLT);
+//
+//              tfree(1);
+//
+//              emitIFormat(OP_BNE, REG_ZR, currentTemporary(), 4);
+//              emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 1);
+//              emitIFormat(OP_BEQ, REG_ZR, REG_ZR, 2);
+//              emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 0);
+//              latt_type = 1;
+//            }
+//          }
+//
+//
+//        } else if (operatorSymbol == SYM_GEQ) {
+//
+//          if (getAttributeType(attribute) == ATT_CONSTANT) {
+//            if (latt_type == 0) {
+//
+//              if (latt_const >= getAttributeValue(attribute)) {
+//
+//                latt_const = 0;
+//              } else {
+//
+//                latt_const = 1;
+//              }
+//            } else {
+//              load_integer(getAttributeValue(attribute));
+//              latt_type = 1;
+//
+//
+//              emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_SLT);
+//
+//              tfree(1);
+//
+//              emitIFormat(OP_BNE, REG_ZR, currentTemporary(), 4);
+//              emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 1);
+//              emitIFormat(OP_BEQ, REG_ZR, REG_ZR, 2);
+//              emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 0);
+//
+//            }
+//          } else {
+//            if (latt_type == 0) {
+//              load_integer(latt_const);
+//              latt_type = 1;
+//
+//
+//              emitRFormat(OP_SPECIAL, currentTemporary(), previousTemporary(), previousTemporary(), FCT_SLT);
+//
+//              tfree(1);
+//
+//              emitIFormat(OP_BNE, REG_ZR, currentTemporary(), 4);
+//              emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 1);
+//              emitIFormat(OP_BEQ, REG_ZR, REG_ZR, 2);
+//              emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 0);
+//
+//
+//            } else {
+//              latt_type = 1;
+//
+//              emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_SLT);
+//
+//              tfree(1);
+//
+//              emitIFormat(OP_BNE, REG_ZR, currentTemporary(), 4);
+//              emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 1);
+//              emitIFormat(OP_BEQ, REG_ZR, REG_ZR, 2);
+//              emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 0);
+//
+//            }
+//          }
+//        }
+//      }
+//
+//      if (latt_type == 0) {
+//        setAttributeType(attribute, ATT_CONSTANT);
+//        setAttributeValue(attribute, latt_const);
+//      } else {
+//        resetAttribute(attribute);
+//      }
+//
+//      // assert: allocatedTemporaries == n + 1
+//
+//      return ltype;
+//
+//    }
+
+    int gr_compareExpression(int* attribute){
       int ltype;
       int operatorSymbol;
       int rtype;
-      int latt_const;
-      int latt_type;
-
-      latt_type = 0;
-      latt_const = 0;
-
+      int constantTemp;
+      int prevType;
+      
+      prevType = 0;
+      constantTemp = 0;
+      
       // assert: n = allocatedTemporaries
       ltype = gr_shiftExpression(attribute);
-
-      if (getAttributeType(attribute) == ATT_CONSTANT) {
-
-        latt_const = getAttributeValue(attribute);
+      
+      if (*(attribute) == 1) {
+        // constant
+        constantTemp = *(attribute + 1);
       } else {
-        latt_type = 1;
+        prevType = 1;
         // assert: allocatedTemporaries == n + 1
       }
-
-      resetAttribute(attribute);
-
-
+      
+      *(attribute) = 0;
+      *(attribute + 1) = 0;
+      
       // assert: allocatedTemporaries == n + 1
-
-
+      
+      //optional: ==, !=, <, >, <=, >= simpleExpression
       if (isComparison()) {
         operatorSymbol = symbol;
-
+        
         getSymbol();
-
+        
         rtype = gr_shiftExpression(attribute);
-
+        
         // assert: allocatedTemporakries == n + 2
-
+        
         if (ltype != rtype)
-        typeWarning(ltype, rtype);
-
+          typeWarning(ltype, rtype);
+        
         if (operatorSymbol == SYM_EQUALITY) {
-
-          if (getAttributeType(attribute) == ATT_CONSTANT) {
-            if (latt_type == 0) {
-
-              if (latt_const == getAttributeValue(attribute)) {
-
-                latt_const = 1;
+          
+          if (*(attribute) == 1) {
+            if (prevType == 0) {
+              // compare constant with constant
+              if (constantTemp == *(attribute + 1)) {
+                // assert: 1 (true)
+                constantTemp = 1;
               } else {
-
-                latt_const = 0;
+                // assert: 0 (false)
+                constantTemp = 0;
               }
             } else {
-              load_integer(getAttributeValue(attribute));
-              latt_type = 1;
+              load_integer(*(attribute + 1));
+              prevType = 1;
             }
           } else {
-            if (latt_type == 0) {
-              load_integer(latt_const);
-              latt_type = 1;
+            if (prevType == 0) {
+              load_integer(constantTemp);
+              prevType = 1;
             }
           }
-
-          if (latt_type == 1) {
-
+          
+          if (prevType == 1) {
+            // subtract, if result = 0 then 1, else 0
             emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_SUBU);
-
+            
             tfree(1);
-
+            
             emitIFormat(OP_BEQ, REG_ZR, currentTemporary(), 4);
             emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 0);
             emitIFormat(OP_BEQ, REG_ZR, currentTemporary(), 2);
             emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 1);
           }
-
+          
         } else if (operatorSymbol == SYM_NOTEQ) {
-
-          if (getAttributeType(attribute) == ATT_CONSTANT) {
-            if (latt_type == 0) {
-
-              if (latt_const - getAttributeValue(attribute) == 0) {
-
-                latt_const = 0;
+          
+          if (*(attribute) == 1) {
+            if (prevType == 0) {
+              // compare constant with constant
+              if (constantTemp - * (attribute + 1) == 0) {
+                // assert: 0 (false)
+                constantTemp = 0;
               } else {
-
-                latt_const = 1;
+                // assert: 1 (true)
+                constantTemp = 1;
               }
             } else {
-              load_integer(getAttributeValue(attribute));
-              latt_type = 1;
+              load_integer(*(attribute + 1));
+              prevType = 1;
             }
           } else {
-            if (latt_type == 0) {
-              load_integer(latt_const);
-              latt_type = 1;
+            if (prevType == 0) {
+              load_integer(constantTemp);
+              prevType = 1;
             }
           }
-
-          if (latt_type == 1) {
-
+          
+          if (prevType == 1) {
+            // subtract, if result = 0 then 0, else 1
             emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_SUBU);
-
+            
             tfree(1);
-
+            
             emitIFormat(OP_BNE, REG_ZR, currentTemporary(), 4);
             emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 0);
             emitIFormat(OP_BEQ, REG_ZR, currentTemporary(), 2);
             emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 1);
           }
-
+          
         } else if (operatorSymbol == SYM_LT) {
-
-          if (getAttributeType(attribute) == ATT_CONSTANT) {
-            if (latt_type == 0) {
-
-              if (latt_const < getAttributeValue(attribute)) {
-
-                latt_const = 1;
+          
+          if (*(attribute) == 1) {
+            if (prevType == 0) {
+              // compare constant with constant
+              if (constantTemp < * (attribute + 1)) {
+                // assert: 1 (true)
+                constantTemp = 1;
               } else {
-
-                latt_const = 0;
+                // assert: 0 (false)
+                constantTemp = 0;
               }
             } else {
-              load_integer(getAttributeValue(attribute));
-              latt_type = 1;
-
-
+              load_integer(*(attribute + 1));
+              prevType = 1;
+              
+              // set to 1 if a < b, else 0
               emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_SLT);
-
+              
               tfree(1);
-
+              
             }
           } else {
-            if (latt_type == 0) {
-              load_integer(latt_const);
-              latt_type = 1;
-
-
+            if (prevType == 0) {
+              load_integer(constantTemp);
+              prevType = 1;
+              
+              // set to 1 if a < b, else 0
               emitRFormat(OP_SPECIAL, currentTemporary(), previousTemporary(), previousTemporary(), FCT_SLT);
-
+              
               tfree(1);
-
+              
             } else {
-              latt_type = 1;
-
-
+              prevType = 1;
+              
+              // set to 1 if a < b, else 0
               emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_SLT);
-
+              
               tfree(1);
             }
           }
-
+          
         } else if (operatorSymbol == SYM_GT) {
-
-          if (getAttributeType(attribute) == ATT_CONSTANT) {
-            if (latt_type == 0) {
-
-              if (latt_const > getAttributeValue(attribute)) {
-
-                latt_const = 1;
+          
+          if (*(attribute) == 1) {
+            if (prevType == 0) {
+              // compare constant with constant
+              if (constantTemp > *(attribute + 1)) {
+                // assert: 1 (true)
+                constantTemp = 1;
               } else {
-
-                latt_const = 0;
+                // assert: 0 (false)
+                constantTemp = 0;
               }
             } else {
-              load_integer(getAttributeValue(attribute));
-              latt_type = 1;
-
-
+              load_integer(*(attribute + 1));
+              prevType = 1;
+              
+              // set to 1 if a < b, else 0
               emitRFormat(OP_SPECIAL, currentTemporary(), previousTemporary(), previousTemporary(), FCT_SLT);
-
+              
               tfree(1);
-
+              
             }
           } else {
-            if (latt_type == 0) {
-              load_integer(latt_const);
-              latt_type = 1;
-
-
+            if (prevType == 0) {
+              load_integer(constantTemp);
+              prevType = 1;
+              
+              // set to 1 if b < a, else 0
               emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_SLT);
-
-
+              
+              
               tfree(1);
-
+              
             } else {
-              latt_type = 1;
-
-
+              prevType = 1;
+              
+              // set to 1 if b < a, else 0
               emitRFormat(OP_SPECIAL, currentTemporary(), previousTemporary(), previousTemporary(), FCT_SLT);
-
-
+              
+              
               tfree(1);
-
+              
             }
           }
-
-
+          
+          
         } else if (operatorSymbol == SYM_LEQ) {
-
-          if (getAttributeType(attribute) == ATT_CONSTANT) {
-            if (latt_type == 0) {
-
-              if (getAttributeValue(attribute) <= latt_const) {
-
-                latt_const = 0;
+          
+          if (*(attribute) == 1) {
+            if (prevType == 0) {
+              // compare constant with constant
+              if (*(attribute + 1) <= constantTemp) {
+                // assert: 0 (false)
+                constantTemp = 0;
               } else {
-
-                latt_const = 1;
+                // assert: 1 (true)
+                constantTemp = 1;
               }
             } else {
-              load_integer(getAttributeValue(attribute));
-              latt_type = 1;
-
-
+              load_integer(*(attribute + 1));
+              prevType = 1;
+              
+              // if b < a set 0, else 1
               emitRFormat(OP_SPECIAL, currentTemporary(), previousTemporary(), previousTemporary(), FCT_SLT);
-
+              
               tfree(1);
-
+              
               emitIFormat(OP_BNE, REG_ZR, currentTemporary(), 4);
               emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 1);
               emitIFormat(OP_BEQ, REG_ZR, REG_ZR, 2);
               emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 0);
-
+              
             }
           } else {
-            if (latt_type == 0) {
-              load_integer(latt_const);
-              latt_type = 1;
-
-
+            if (prevType == 0) {
+              load_integer(constantTemp);
+              prevType = 1;
+              
+              // if b < a set 0, else 1
               emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_SLT);
-
+              
               tfree(1);
-
+              
               emitIFormat(OP_BNE, REG_ZR, currentTemporary(), 4);
               emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 1);
               emitIFormat(OP_BEQ, REG_ZR, REG_ZR, 2);
               emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 0);
-
+              
             } else {
-
+              // if b < a set 0, else 1
               emitRFormat(OP_SPECIAL, currentTemporary(), previousTemporary(), previousTemporary(), FCT_SLT);
-
+              
               tfree(1);
-
+              
               emitIFormat(OP_BNE, REG_ZR, currentTemporary(), 4);
               emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 1);
               emitIFormat(OP_BEQ, REG_ZR, REG_ZR, 2);
               emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 0);
-              latt_type = 1;
+              prevType = 1;
             }
           }
-
-
+          
+          
         } else if (operatorSymbol == SYM_GEQ) {
-
-          if (getAttributeType(attribute) == ATT_CONSTANT) {
-            if (latt_type == 0) {
-
-              if (latt_const >= getAttributeValue(attribute)) {
-
-                latt_const = 0;
+          
+          if (*(attribute) == 1) {
+            if (prevType == 0) {
+              // compare constant with constant
+              if (constantTemp >= *(attribute + 1)) {
+                // assert: 0 (false)
+                constantTemp = 0;
               } else {
-
-                latt_const = 1;
+                // assert: 1 (true)
+                constantTemp = 1;
               }
             } else {
-              load_integer(getAttributeValue(attribute));
-              latt_type = 1;
-
-
+              load_integer(*(attribute + 1));
+              prevType = 1;
+              
+              // if a < b set 0, else 1
               emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_SLT);
-
+              
               tfree(1);
-
+              
               emitIFormat(OP_BNE, REG_ZR, currentTemporary(), 4);
               emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 1);
               emitIFormat(OP_BEQ, REG_ZR, REG_ZR, 2);
               emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 0);
-
+              
             }
           } else {
-            if (latt_type == 0) {
-              load_integer(latt_const);
-              latt_type = 1;
-
-
+            if (prevType == 0) {
+              load_integer(constantTemp);
+              prevType = 1;
+              
+              // if a < b set 0, else 1
               emitRFormat(OP_SPECIAL, currentTemporary(), previousTemporary(), previousTemporary(), FCT_SLT);
-
+              
               tfree(1);
-
+              
               emitIFormat(OP_BNE, REG_ZR, currentTemporary(), 4);
               emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 1);
               emitIFormat(OP_BEQ, REG_ZR, REG_ZR, 2);
               emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 0);
-
-
+              
+              
             } else {
-              latt_type = 1;
-
+              prevType = 1;
+              // if a < b set 0, else 1
               emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_SLT);
-
+              
               tfree(1);
-
+              
               emitIFormat(OP_BNE, REG_ZR, currentTemporary(), 4);
               emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 1);
               emitIFormat(OP_BEQ, REG_ZR, REG_ZR, 2);
               emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 0);
-
+              
             }
           }
         }
       }
-
-      if (latt_type == 0) {
-        setAttributeType(attribute, ATT_CONSTANT);
-        setAttributeValue(attribute, latt_const);
+      
+      if (prevType == 0) {
+        *(attribute) = 1;
+        *(attribute + 1) = constantTemp;
       } else {
-        resetAttribute(attribute);
+        *(attribute) = 0;
+        *(attribute + 1) = 0;
       }
-
+      
       // assert: allocatedTemporaries == n + 1
-
+      
       return ltype;
-
     }
+
+    int* createListEntry(int data) {
+      int* newEntry;
+      newEntry = malloc(SIZEOFINT + SIZEOFINTSTAR);
+      
+      *newEntry = data;
+      *(newEntry + 1) = 0;
+      return newEntry;
+    }
+
+    int gr_andExpression(int* attribute) {
+      int brToEnd;
+      int ltype;
+      int rtype;
+      int prevType;
+      int* head;
+      int* fjump;
+      
+      prevType = 0;
+      
+      ltype = gr_compareExpression(attribute);
+      
+      if (symbol == SYM_AND) {
+        if (*(attribute) == 1) {
+          if (*(attribute + 1) < 0) {
+            load_integer(*(attribute + 1) * (-1));
+            emitRFormat(OP_SPECIAL, REG_ZR, currentTemporary(), currentTemporary(), FCT_SUBU);
+          } else {
+            load_integer(*(attribute + 1));
+          }
+        }
+        
+        *(attribute) = 0;
+        *(attribute + 1) = 0;
+        
+        prevType = 1;
+        
+        *(attribute + 2) = (int) createListEntry(binaryLength);
+        head = (int*) * (attribute + 2);
+        emitIFormat(OP_BEQ, REG_ZR, currentTemporary(), 0);
+      }
+      
+      while (symbol == SYM_AND) {
+        getSymbol();
+        rtype = gr_compareExpression(attribute);
+        
+        if (*(attribute) == 1) {
+          if (*(attribute + 1) < 0) {
+            load_integer(*(attribute + 1) * (-1));
+            emitRFormat(OP_SPECIAL, REG_ZR, currentTemporary(), currentTemporary(), FCT_SUBU);
+          } else {
+            load_integer(*(attribute + 1));
+          }
+        }
+        
+        *(attribute) = 0;
+        *(attribute + 1) = 0;
+        
+        *(head + 1) = (int) createListEntry(binaryLength);
+        head = (int*) * (head + 1);
+        emitIFormat(OP_BEQ, REG_ZR, currentTemporary(), 0);
+      }
+      
+      if (prevType == 1) {
+        *(attribute) = 0;
+        *(attribute + 1) = 0;
+      }
+      
+      return ltype;
+    }
+
+//    void gr_while() {
+//      int brBackToWhile;
+//      int brForwardToEnd;
+//
+//      int* attribute;
+//      attribute = createAttribute();
+//
+//      // assert: allocatedTemporaries == 0
+//
+//      brBackToWhile = binaryLength;
+//
+//      brForwardToEnd = 0;
+//
+//
+//      if (symbol == SYM_WHILE) {
+//        getSymbol();
+//
+//        if (symbol == SYM_LPARENTHESIS) {
+//          getSymbol();
+//
+//          gr_expression(attribute);
+//          loadConstantBeforeNonConstant(attribute);
+//
+//
+//          brForwardToEnd = binaryLength;
+//
+//          emitIFormat(OP_BEQ, REG_ZR, currentTemporary(), 0);
+//
+//          tfree(1);
+//
+//          if (symbol == SYM_RPARENTHESIS) {
+//            getSymbol();
+//
+//
+//            if (symbol == SYM_LBRACE) {
+//              getSymbol();
+//
+//              while (isNotRbraceOrEOF())
+//              gr_statement();
+//
+//              if (symbol == SYM_RBRACE)
+//              getSymbol();
+//              else {
+//                syntaxErrorSymbol(SYM_RBRACE);
+//
+//                exit(-1);
+//              }
+//            }
+//
+//            else
+//            gr_statement();
+//          } else
+//          syntaxErrorSymbol(SYM_RPARENTHESIS);
+//        } else
+//        syntaxErrorSymbol(SYM_LPARENTHESIS);
+//      } else
+//      syntaxErrorSymbol(SYM_WHILE);
+//
+//
+//      emitIFormat(OP_BEQ, REG_ZR, REG_ZR, (brBackToWhile - binaryLength - WORDSIZE) / WORDSIZE);
+//
+//      if (brForwardToEnd != 0)
+//
+//
+//      fixup_relative(brForwardToEnd);
+//
+//      // assert: allocatedTemporaries == 0
+//    }
 
     void gr_while() {
       int brBackToWhile;
       int brForwardToEnd;
-
-      int* attribute;
-      attribute = createAttribute();
-
+      
+      int* constantVal;
+      
+      constantVal = malloc(2 * SIZEOFINT);
+      
       // assert: allocatedTemporaries == 0
-
+      
       brBackToWhile = binaryLength;
-
+      
       brForwardToEnd = 0;
-
-
+      
+      // while ( expression )
       if (symbol == SYM_WHILE) {
         getSymbol();
-
+        
         if (symbol == SYM_LPARENTHESIS) {
           getSymbol();
-
-          gr_expression(attribute);
-          loadConstantBeforeNonConstant(attribute);
-
-
+          
+          gr_expression(constantVal);
+          
+          if (*(constantVal) == 1) {
+            if (*(constantVal + 1) < 0) {
+              load_integer(*(constantVal + 1) * (-1));
+              emitRFormat(OP_SPECIAL, REG_ZR, currentTemporary(), currentTemporary(), FCT_SUBU);
+            } else {
+              load_integer(*(constantVal + 1));
+            }
+          }
+          
+          *(constantVal) = 0;
+          *(constantVal + 1) = 0;
+          
+          // do not know where to branch, fixup later
           brForwardToEnd = binaryLength;
-
+          
           emitIFormat(OP_BEQ, REG_ZR, currentTemporary(), 0);
-
+          
           tfree(1);
-
+          
           if (symbol == SYM_RPARENTHESIS) {
             getSymbol();
-
-
+            
+            // zero or more statements: { statement }
             if (symbol == SYM_LBRACE) {
               getSymbol();
-
+              
               while (isNotRbraceOrEOF())
-              gr_statement();
-
+                gr_statement();
+              
               if (symbol == SYM_RBRACE)
-              getSymbol();
+                getSymbol();
               else {
                 syntaxErrorSymbol(SYM_RBRACE);
-
+                
                 exit(-1);
               }
             }
-
+            // only one statement without {}
             else
-            gr_statement();
+              gr_statement();
           } else
-          syntaxErrorSymbol(SYM_RPARENTHESIS);
+            syntaxErrorSymbol(SYM_RPARENTHESIS);
         } else
-        syntaxErrorSymbol(SYM_LPARENTHESIS);
+          syntaxErrorSymbol(SYM_LPARENTHESIS);
       } else
-      syntaxErrorSymbol(SYM_WHILE);
-
-
+        syntaxErrorSymbol(SYM_WHILE);
+      
+      // unconditional branch to beginning of while
       emitIFormat(OP_BEQ, REG_ZR, REG_ZR, (brBackToWhile - binaryLength - WORDSIZE) / WORDSIZE);
-
+      
       if (brForwardToEnd != 0)
-
-
-      fixup_relative(brForwardToEnd);
-
+        // first instruction after loop comes here
+        // now we have our address for the conditional jump from above
+        fixup_relative(brForwardToEnd);
+      
       // assert: allocatedTemporaries == 0
     }
 
