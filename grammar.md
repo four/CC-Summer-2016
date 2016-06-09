@@ -49,7 +49,9 @@ simpleExpression = [ "-" ] term { ( "+" | "-" ) term } .                        
 
 shiftExpression  = simpleExpression { ( ">>" | "<<" ) simpleExpression } .
 
-expression       = shiftExpression [ ( "==" | "!=" | "<" | ">" | "<=" | ">=" ) shiftExpression ] .
+compareExpression = shiftExpression [ ( "==" | "!=" | "<" | ">" | "<=" | ">=" ) shiftExpression ] .
+
+expression      =  compareExpression  [ ( "||" | "&&"  )  compareExpression ] .
 
 while            = "while" "(" expression ")"
                              ( statement |
@@ -78,4 +80,5 @@ procedure        = "(" [ variable { "," variable } ] ")"                //(int a
                     ( ";" | "{" { variable ";" } { statement } "}" ) .
 
 cstar(R)           = { type identifier (  [ selector ] | [ "=" [ cast ] [ "-" ] literal ] ) ";" |     // int a = 3;, int a; int a[5][56]; int a[5];
-                   ( "void" | type ) identifier procedure } .                                     //void a(...){...}, int a(...){...}
+                   ( "void" | type ) identifier procedure }  |                                   //void a(...){...}, int a(...){...}
+                   (struct ) .  
