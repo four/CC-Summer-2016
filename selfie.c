@@ -532,6 +532,7 @@ int getSymbol();
     int isStarOrDivOrModulo();
     int isPlusOrMinus();
     int isComparison();
+    int isBooleanSymbol();
     int isShift();
     int isStarStruct(int type);
 
@@ -565,6 +566,7 @@ int getSymbol();
     int  gr_term(int* attribute);
     int  gr_simpleExpression(int* attribute);
     int  gr_shiftExpression(int * attribute);
+    int  gr_compareExpression(int* attribute);
     int  gr_expression(int* attribute);
     void gr_while();
     void gr_if();
@@ -2292,6 +2294,15 @@ int getSymbol();
       return 0;
     }
 
+    int isBooleanSymbol() {
+        if (symbol == SYM_AND)
+            return 1;
+        else if (symbol == SYM_OR)
+            return 1;
+        else
+            return 0;
+    }
+
     int isShift() {
       if (symbol == SYM_LEFT_SHIFT)
       return 1;
@@ -2674,7 +2685,7 @@ int getSymbol();
     }
 
 void parseExpressionForCall(int* attribute){
-  gr_expression(attribute);
+  gr_compareExpression(attribute);
   loadConstantBeforeNonConstant(attribute);
   emitIFormat(OP_ADDIU, REG_SP, REG_SP, -WORDSIZE);
   emitIFormat(OP_SW, REG_SP, currentTemporary(), 0);
@@ -2711,12 +2722,12 @@ int checkRParenthesisForCall(int type, int* entry, int* procedure){
 
       // identifier "(" expression ?
       if (isExpression()) {
-        //calls gr_expression, does constant folding and emits I format -WORDSIZE to REG_SP
+        //calls gr_compareExpression, does constant folding and emits I format -WORDSIZE to REG_SP
         parseExpressionForCall(attribute);
         // identifier "(" expression "," expression "," ... ?
         while (symbol == SYM_COMMA) {
           getSymbol();
-          //calls gr_expression, does constant folding and emits I format -WORDSIZE to REG_SP
+          //calls gr_compareExpression, does constant folding and emits I format -WORDSIZE to REG_SP
           parseExpressionForCall(attribute);
         }      // identifier "(" expression "," ..."," ...")" ?
         type = checkRParenthesisForCall(type, entry, procedure);
@@ -2738,7 +2749,7 @@ int checkDereferenceForFactor(int type, int* attribute ){
     // * "(" expression ")"
   } else if (symbol == SYM_LPARENTHESIS) {
     getSymbol();
-    type = gr_expression(attribute);
+    type = gr_compareExpression(attribute);
     loadConstantBeforeNonConstant(attribute);
     checkSymbol(SYM_RPARENTHESIS);
   } else{
@@ -2814,7 +2825,7 @@ int gr_factor(int* attribute) {
           checkSymbol(SYM_RPARENTHESIS);
           // not a cast: "(" expression ")"
         } else {
-          type = gr_expression(attribute);
+          type = gr_compareExpression(attribute);
           loadConstantBeforeNonConstant(attribute);
           checkSymbol(SYM_RPARENTHESIS);
           // assert: allocatedTemporaries == n + 1
@@ -2852,7 +2863,7 @@ int gr_factor(int* attribute) {
         //  "(" expression ")"
       } else if (symbol == SYM_LPARENTHESIS) {
         getSymbol();
-        type = gr_expression(attribute);
+        type = gr_compareExpression(attribute);
         loadConstantBeforeNonConstant(attribute);
         checkSymbol(SYM_RPARENTHESIS);
       } else{
@@ -2867,19 +2878,29 @@ int gr_factor(int* attribute) {
       }
     }
 
-int getConstFoldValueForTerm(int operatorSymbol,int latt_const, int* attribute){
+int getConstFoldValueForTermOrBool(int operatorSymbol,int latt_const, int* attribute){
       if (operatorSymbol == SYM_ASTERISK) {
         latt_const = latt_const * getAttributeValue(attribute);
       } else if (operatorSymbol == SYM_DIV) {
         latt_const = latt_const / getAttributeValue(attribute);
       } else if (operatorSymbol == SYM_MOD) {
         latt_const = latt_const % getAttributeValue(attribute);
+      } else if (operatorSymbol == SYM_AND) {
+        //0*1 = 0, 1*1=1;
+        latt_const = latt_const * getAttributeValue(attribute);
+        //bootstrapping without using boolean symbols
+    }   else if (operatorSymbol == SYM_OR) {
+        if(latt_const + getAttributeValue(attribute)> 0){
+          latt_const = 1;
+        }else{
+            latt_const = 0;
+        }
       }
       return latt_const;
     }
 
 void setAttributeForTerm(int* attribute, int latt_const, int latt_type){
-  if (latt_type == 0) {
+  if (latt_type == ATT_NOT) {
     setAttributeType(attribute,ATT_CONSTANT);
     setAttributeValue(attribute, latt_const);
   } else {
@@ -2965,6 +2986,13 @@ void emitCodeForOperator(int operatorSymbol, int ltype, int rtype){
     emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 1);
     emitIFormat(OP_BEQ, REG_ZR, REG_ZR, 2);
     emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 0);
+  }else if(operatorSymbol == SYM_AND){
+    emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), 0, FCT_MULTU);
+    emitRFormat(OP_SPECIAL, 0, 0, previousTemporary(), FCT_MFLO);
+    tfree(1);
+
+  }else if(operatorSymbol == SYM_OR){
+
   }else{
 
   }
@@ -2974,14 +3002,14 @@ int foldTerm(int* attribute, int ltype, int operatorSymbol, int rtype){
   int latt_const;
   int latt_type;
 
-  latt_type = 0;
+  latt_type = ATT_NOT;
   latt_const = 0;
 
   if (getAttributeType(attribute) == ATT_CONSTANT) {
     latt_const = getAttributeValue(attribute);
-    latt_type = 0;
+    latt_type = ATT_NOT;
   } else {
-    latt_type = 1;
+    latt_type = ATT_CONSTANT;
     // assert: allocatedTemporaries == n + 1
   }
     resetAttribute(attribute);
@@ -2999,17 +3027,17 @@ int foldTerm(int* attribute, int ltype, int operatorSymbol, int rtype){
         //constant folding
         //check if the last type was a constant or not
         if (getAttributeType(attribute) == ATT_CONSTANT) {
-            if (latt_type == 0) {
-                latt_const = getConstFoldValueForTerm(operatorSymbol, latt_const, attribute);
+            if (latt_type == ATT_NOT) {
+                latt_const = getConstFoldValueForTermOrBool(operatorSymbol, latt_const, attribute);
             } else {
                 latt_const = getAttributeValue(attribute);
                 load_integer(latt_const);
                 emitCodeForOperator(operatorSymbol,ltype, rtype);
             }
         } else {
-            if (latt_type == 0) {
+            if (latt_type == ATT_NOT) {
                 load_integer(latt_const);
-                latt_type = 1;
+                latt_type = ATT_CONSTANT;
             }
             emitCodeForOperator(operatorSymbol,ltype, rtype);
         }
@@ -3064,7 +3092,7 @@ int foldTerm(int* attribute, int ltype, int operatorSymbol, int rtype){
     int latt_const;
     int latt_type;
 
-    latt_type = 0;
+    latt_type = ATT_NOT;
     latt_const = 0;
 
     if (getAttributeType(attribute) == ATT_CONSTANT) {
@@ -3077,7 +3105,7 @@ int foldTerm(int* attribute, int ltype, int operatorSymbol, int rtype){
       } else {
         latt_const = getAttributeValue(attribute);
       }
-      latt_type = 0;
+      latt_type = ATT_NOT;
       resetAttribute(attribute);
     } else {
       if (sign) {
@@ -3087,7 +3115,7 @@ int foldTerm(int* attribute, int ltype, int operatorSymbol, int rtype){
         }
         emitRFormat(OP_SPECIAL, REG_ZR, currentTemporary(), currentTemporary(), FCT_SUBU);
       }
-      latt_type = 1;
+      latt_type = ATT_CONSTANT;
     }
     // assert: allocatedTemporaries == n + 1
     resetAttribute(attribute);
@@ -3098,7 +3126,7 @@ int foldTerm(int* attribute, int ltype, int operatorSymbol, int rtype){
             rtype = gr_term(attribute);
 
             if (getAttributeType(attribute) == ATT_CONSTANT) {
-                if (latt_type == 0) {
+                if (latt_type == ATT_NOT) {
                     if (operatorSymbol == SYM_PLUS) {
                         latt_const = latt_const + getAttributeValue(attribute);
                     } else if (operatorSymbol == SYM_MINUS) {
@@ -3108,16 +3136,16 @@ int foldTerm(int* attribute, int ltype, int operatorSymbol, int rtype){
                     latt_const = getAttributeValue(attribute);
                     load_integer(latt_const);
                     emitCodeForOperator(operatorSymbol,ltype, rtype);
-                    latt_type = 1;
+                    latt_type = ATT_CONSTANT;
                 }
             } else {
-                if (latt_type == 0) {
+                if (latt_type == ATT_NOT) {
                     load_integer(latt_const);
                     emitCodeForOperator(operatorSymbol,ltype, rtype);
-                    latt_type = 1;
+                    latt_type = ATT_CONSTANT;
                 } else {
                     emitCodeForOperator(operatorSymbol,ltype, rtype);
-                    latt_type = 1;
+                    latt_type = ATT_CONSTANT;
                 }
             }
             resetAttribute(attribute);
@@ -3147,15 +3175,15 @@ int foldTerm(int* attribute, int ltype, int operatorSymbol, int rtype){
     int foldShiftExpression(int* attribute, int ltype, int operatorSymbol, int rtype){
       int latt_const;
       int latt_type;
-      latt_type = 0;
+      latt_type = ATT_NOT;
       latt_const = 0;
 
       if (getAttributeType(attribute) == ATT_CONSTANT) {
         latt_const = getAttributeValue(attribute);
-        latt_type = 0;
+        latt_type = ATT_NOT;
         resetAttribute(attribute);
       } else {
-        latt_type = 1;
+        latt_type = ATT_CONSTANT;
         // assert: allocatedTemporaries == n + 1
       }
       resetAttribute(attribute);
@@ -3167,13 +3195,13 @@ int foldTerm(int* attribute, int ltype, int operatorSymbol, int rtype){
 
            if (getAttributeType(attribute) == ATT_CONSTANT) {
 
-               if (latt_type == 0) {
+               if (latt_type == ATT_NOT) {
                    if (operatorSymbol == SYM_LEFT_SHIFT) {
                        latt_const = latt_const << getAttributeValue(attribute);
                    } else if (operatorSymbol == SYM_RIGHT_SHIFT) {
                        latt_const = latt_const >> getAttributeValue(attribute);
                    }
-               } else {//latt_type == 1
+               } else {//latt_type == ATT_CONSTANT;
                    latt_const = getAttributeValue(attribute);
                    load_integer(latt_const);
                    emitCodeForOperator(operatorSymbol,ltype, rtype);
@@ -3181,7 +3209,7 @@ int foldTerm(int* attribute, int ltype, int operatorSymbol, int rtype){
 
            } else {// getAttributeType(attribute) == ATT_NOT)
 
-               if (latt_type == 0) {
+               if (latt_type == ATT_NOT) {
                    load_integer(latt_const);
                    if (operatorSymbol == SYM_LEFT_SHIFT) {
                        emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_SLLV);
@@ -3189,8 +3217,8 @@ int foldTerm(int* attribute, int ltype, int operatorSymbol, int rtype){
                        emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_SRLV);
                    }
                    tfree(1);
-                   latt_type = 1;
-               } else {// latt_type == 1
+                   latt_type = ATT_CONSTANT;
+               } else {// latt_type == ATT_CONSTANT;
                    emitCodeForOperator(operatorSymbol,ltype, rtype);
                }
            }
@@ -3214,16 +3242,16 @@ int foldTerm(int* attribute, int ltype, int operatorSymbol, int rtype){
     }
 
 
-int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype){
+int foldCompareExpression(int* attribute, int ltype, int operatorSymbol, int rtype){
   int latt_const;
   int latt_type;
-  latt_type = 0;
+  latt_type = ATT_NOT;
   latt_const = 0;
 
   if (getAttributeType(attribute) == ATT_CONSTANT) {
     latt_const = getAttributeValue(attribute);
   } else {
-    latt_type = 1;
+    latt_type = ATT_CONSTANT;
   }
 
   resetAttribute(attribute);
@@ -3242,25 +3270,25 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype){
 
                 if (getAttributeType(attribute) == ATT_CONSTANT) {
 
-                    if (latt_type == 0) {
+                    if (latt_type == ATT_NOT) {
 
                         if (latt_const == getAttributeValue(attribute)) {
                             latt_const = 1;
                         } else {
                             latt_const = 0;
                         }
-                    } else {//latt_type == 1
+                    } else {//latt_type == ATT_CONSTANT;
                         load_integer(getAttributeValue(attribute));
                     }
 
                 } else {//getAttributeType(attribute) == ATT_NOT
-                    if (latt_type == 0) {
+                    if (latt_type == ATT_NOT) {
                         load_integer(latt_const);
-                        latt_type = 1;
+                        latt_type = ATT_CONSTANT;
                     }
                 }
                 //emits code for constant folding
-                if (latt_type == 1) {
+                if (latt_type == ATT_CONSTANT) {
                     emitCodeForOperator(operatorSymbol,ltype, rtype);
                 }
 
@@ -3268,7 +3296,7 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype){
             } else if (operatorSymbol == SYM_NOTEQ) {
 
                 if (getAttributeType(attribute) == ATT_CONSTANT) {
-                    if (latt_type == 0) {
+                    if (latt_type == ATT_NOT) {
 
                         if (latt_const - getAttributeValue(attribute) == 0) {
                             latt_const = 0;
@@ -3276,24 +3304,24 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype){
                             latt_const = 1;
                         }
 
-                    } else {//latt_type == 1
+                    } else {//latt_type == ATT_CONSTANT
                         load_integer(getAttributeValue(attribute));
                     }
 
                 } else {//getAttributeType(attribute) == ATT_NOT
 
-                    if (latt_type == 0) {
+                    if (latt_type == ATT_NOT) {
                         load_integer(latt_const);
-                        latt_type = 1;
+                        latt_type = ATT_CONSTANT;
                     }
                 }
-                if (latt_type == 1) {
+                if (latt_type == ATT_CONSTANT) {
                     emitCodeForOperator(operatorSymbol,ltype, rtype);
                 }
 
             } else if (operatorSymbol == SYM_LT) {
                 if (getAttributeType(attribute) == ATT_CONSTANT) {
-                    if (latt_type == 0) {
+                    if (latt_type == ATT_NOT) {
                         if (latt_const < getAttributeValue(attribute)) {
                             latt_const = 1;
                         } else {
@@ -3304,9 +3332,9 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype){
                         emitCodeForOperator(operatorSymbol,ltype, rtype);
                     }
                 } else {
-                    if (latt_type == 0) {
+                    if (latt_type == ATT_NOT) {
                         load_integer(latt_const);
-                        latt_type = 1;
+                        latt_type = ATT_CONSTANT;
                         emitRFormat(OP_SPECIAL, currentTemporary(), previousTemporary(), previousTemporary(), FCT_SLT);
                         tfree(1);
                     } else {
@@ -3315,7 +3343,7 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype){
                 }
             } else if (operatorSymbol == SYM_GT) {
                 if (getAttributeType(attribute) == ATT_CONSTANT) {
-                    if (latt_type == 0) {
+                    if (latt_type == ATT_NOT) {
                         if (latt_const > getAttributeValue(attribute)) {
                             latt_const = 1;
                         } else {
@@ -3326,9 +3354,9 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype){
                         emitCodeForOperator(operatorSymbol,ltype, rtype);
                     }
                 } else {
-                    if (latt_type == 0) {
+                    if (latt_type == ATT_NOT) {
                         load_integer(latt_const);
-                        latt_type = 1;
+                        latt_type = ATT_CONSTANT;
                         emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_SLT);
                         tfree(1);
                     } else {
@@ -3337,7 +3365,7 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype){
                 }
             } else if (operatorSymbol == SYM_LEQ) {
                 if (getAttributeType(attribute) == ATT_CONSTANT) {
-                    if (latt_type == 0) {
+                    if (latt_type == ATT_NOT) {
                         if (getAttributeValue(attribute) <= latt_const) {
                             latt_const = 0;
                         } else {
@@ -3348,7 +3376,7 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype){
                         emitCodeForOperator(operatorSymbol,ltype, rtype);
                     }
                 } else {
-                    if (latt_type == 0) {
+                    if (latt_type == ATT_NOT) {
                         load_integer(latt_const);
                         emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_SLT);
                         tfree(1);
@@ -3356,14 +3384,14 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype){
                         emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 1);
                         emitIFormat(OP_BEQ, REG_ZR, REG_ZR, 2);
                         emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 0);
-                        latt_type = 1;
+                        latt_type = ATT_CONSTANT;
                     } else {
                         emitCodeForOperator(operatorSymbol,ltype, rtype);
                     }
                 }
             } else if (operatorSymbol == SYM_GEQ) {
                 if (getAttributeType(attribute) == ATT_CONSTANT) {
-                    if (latt_type == 0) {
+                    if (latt_type == ATT_NOT) {
                         if (latt_const >= getAttributeValue(attribute)) {
                             latt_const = 0;
                         } else {
@@ -3374,7 +3402,7 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype){
                         emitCodeForOperator(operatorSymbol,ltype, rtype);
                     }
                 } else {
-                    if (latt_type == 0) {
+                    if (latt_type == ATT_NOT) {
                         load_integer(latt_const);
                         emitRFormat(OP_SPECIAL, currentTemporary(), previousTemporary(), previousTemporary(), FCT_SLT);
                         tfree(1);
@@ -3382,7 +3410,7 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype){
                         emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 1);
                         emitIFormat(OP_BEQ, REG_ZR, REG_ZR, 2);
                         emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), 0);
-                        latt_type = 1;
+                        latt_type = ATT_CONSTANT;
                     } else {
                         emitCodeForOperator(operatorSymbol,ltype, rtype);
                     }
@@ -3396,7 +3424,7 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype){
 }
 
 //expression       = shiftExpression [ ( "==" | "!=" | "<" | ">" | "<=" | ">=" ) shiftExpression ] .
-    int gr_expression(int* attribute) {
+    int gr_compareExpression(int* attribute) {
       int ltype;
       int operatorSymbol;
       int rtype;
@@ -3405,7 +3433,79 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype){
       // assert: n = allocatedTemporaries
       ltype = gr_shiftExpression(attribute);
       // assert: allocatedTemporaries == n + 1
-      ltype = foldExpression(attribute, ltype, operatorSymbol, rtype);
+      ltype = foldCompareExpression(attribute, ltype, operatorSymbol, rtype);
+      return ltype;
+    }
+// expression = compareExpression {("&&" | "||" ) compareExpression }   .
+int dofixupChainInExpression(int * attribute, int  ltype, int rtype){
+  int operatorSymbol;
+  int latt_const;
+  int latt_type;
+
+
+  latt_type = ATT_NOT;
+  latt_const = 0;
+
+  if (getAttributeType(attribute) == ATT_CONSTANT) {
+    latt_const = getAttributeValue(attribute);
+    latt_type = ATT_NOT;
+  } else {
+    latt_type = ATT_CONSTANT;
+    // assert: allocatedTemporaries == n + 1
+  }
+    resetAttribute(attribute);
+
+
+  while (isBooleanSymbol()) {
+        // { ("&&" | "||")}
+        operatorSymbol = symbol;
+        getSymbol();
+        //gr_compareExpression  =  trype}
+        rtype = gr_compareExpression(attribute);
+
+//TODO add boolean type and change compareExpression to support boolean
+        if (ltype != rtype){
+            typeWarning(ltype, rtype);
+        }
+        //constant folding
+        //check if the last type was a constant or not
+        if (getAttributeType(attribute) == ATT_CONSTANT) {
+            if (latt_type == ATT_NOT) {
+                latt_const = getConstFoldValueForTermOrBool(operatorSymbol, latt_const, attribute);
+            } else {
+                latt_const = getAttributeValue(attribute);
+                load_integer(latt_const);
+                emitCodeForOperator(operatorSymbol,ltype, rtype);
+            }
+        } else {
+            if (latt_type == ATT_NOT) {
+                load_integer(latt_const);
+                latt_type = ATT_CONSTANT;
+            }
+            emitCodeForOperator(operatorSymbol,ltype, rtype);
+        }
+        resetAttribute(attribute);
+        }
+        //set the attribute
+        setAttributeForTerm(attribute, latt_const,latt_type);
+        // assert: allocatedTemporaries == n + 1
+        return ltype;
+}
+
+//expression = compareExpression {("&&" | "||" ) compareExpression }   .
+
+    int gr_expression(int* attribute){
+      int ltype;
+      int rtype;
+
+      ltype = 0;
+      rtype = 0;
+
+      // assert: n = allocatedTemporaries
+      ltype = gr_compareExpression(attribute);
+      // assert: allocatedTemporaries == n + 1
+      ltype = dofixupChainInExpression(attribute, ltype, rtype);
+
       return ltype;
     }
 
@@ -3427,7 +3527,7 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype){
         if (symbol == SYM_LPARENTHESIS) {
           getSymbol();
           // "while" "(" expression
-          gr_expression(attribute);
+          gr_compareExpression(attribute);
           loadConstantBeforeNonConstant(attribute);
           brForwardToEnd = binaryLength;
           emitIFormat(OP_BEQ, REG_ZR, currentTemporary(), 0);
@@ -3486,7 +3586,7 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype){
         if (symbol == SYM_LPARENTHESIS) {
           getSymbol();
           // if "(" expression
-          gr_expression(attribute);
+          gr_compareExpression(attribute);
           loadConstantBeforeNonConstant(attribute);
           brForwardToElseOrEnd = binaryLength;
           emitIFormat(OP_BEQ, REG_ZR, currentTemporary(), 0);
@@ -3553,7 +3653,7 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype){
       checkSymbol(SYM_RETURN);
       // optional: expression
       if (symbol != SYM_SEMICOLON) {
-        type = gr_expression(attribute);
+        type = gr_compareExpression(attribute);
         loadConstantBeforeNonConstant(attribute);
         if (returnType == VOID_T){
           typeWarning(type, returnType);
@@ -3600,7 +3700,7 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype){
           // "*" identifier "="
           if (symbol == SYM_ASSIGN) {
             getSymbol();
-            rtype = gr_expression(attribute);
+            rtype = gr_compareExpression(attribute);
             loadConstantBeforeNonConstant(attribute);
             if (rtype != INT_T){
               typeWarning(INT_T, rtype);
@@ -3614,7 +3714,7 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype){
           // "*" "(" expression ")"
         } else if (symbol == SYM_LPARENTHESIS) {
           getSymbol();
-          ltype = gr_expression(attribute);
+          ltype = gr_compareExpression(attribute);
           loadConstantBeforeNonConstant(attribute);
           if (ltype != INTSTAR_T){
             typeWarning(INTSTAR_T, ltype);
@@ -3624,7 +3724,7 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype){
             // "*" "(" expression ")" "="
             if (symbol == SYM_ASSIGN) {
               getSymbol();
-              rtype = gr_expression(attribute);
+              rtype = gr_compareExpression(attribute);
               loadConstantBeforeNonConstant(attribute);
               if (rtype != INT_T){
                 typeWarning(INT_T, rtype);
@@ -3655,7 +3755,7 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype){
           ltype = gr_selector();
           if (symbol == SYM_ASSIGN) {
             getSymbol();
-            rtype = gr_expression(attribute);
+            rtype = gr_compareExpression(attribute);
             loadConstantBeforeNonConstant(attribute);
             emitIFormat(OP_SW, previousTemporary(), currentTemporary(), 0);
             tfree(2);
@@ -3667,7 +3767,7 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype){
           entry = getVariable(variableOrProcedureName);
           ltype = getType(entry);
           getSymbol();
-          rtype = gr_expression(attribute);
+          rtype = gr_compareExpression(attribute);
           loadConstantBeforeNonConstant(attribute);
           if (ltype != rtype){
             typeWarning(ltype, rtype);
@@ -3726,7 +3826,7 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype){
       if (getAddress(entry) > 0) {
         load_variable(identifier);
         getSymbol();
-        type = gr_expression(attribute);
+        type = gr_compareExpression(attribute);
         //load constant before non constant
         if (getAttributeType(attribute)) {
           if (getAttributeValue(attribute) < 0){
@@ -3748,7 +3848,7 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype){
           emitRFormat(OP_SPECIAL, 0, 0, previousTemporary(), FCT_MFLO);
           tfree(1);
           getSymbol();
-          type = gr_expression(attribute);
+          type = gr_compareExpression(attribute);
 
           if (getAttributeType(attribute)) {
             if (getAttributeValue(attribute) < 0){
@@ -3773,7 +3873,7 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype){
         talloc();
         emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), getAddress(entry));
         getSymbol();
-        type = gr_expression(attribute);
+        type = gr_compareExpression(attribute);
         if (getAttributeType(attribute) == ATT_CONSTANT) {
           if (getAttributeValue(attribute) < 0){
             syntaxErrorMessage((int*) "No negative offset is allowed in arrays");
@@ -3794,7 +3894,7 @@ int foldExpression(int* attribute, int ltype, int operatorSymbol, int rtype){
           emitRFormat(OP_SPECIAL, 0, 0, previousTemporary(), FCT_MFLO);
           tfree(1);
           getSymbol();
-          type = gr_expression(attribute);
+          type = gr_compareExpression(attribute);
           //load constant before non constant
           if (getAttributeType(attribute) == ATT_CONSTANT ) {
             if (getAttributeValue(attribute) < 0){
@@ -4123,7 +4223,7 @@ int parseSelectorDeclaration(int size){
               set1dArrayLength(entry,fields);
               checkSymbolAndGetNew(SYM_SEMICOLON);
 
-              // type identifier selector = array
+              // type identifier "["selector = array
             }else if(symbol == SYM_LBRACKET){
               type = INTARRAY_T;
               getSymbol();
