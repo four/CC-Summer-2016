@@ -50,7 +50,9 @@ shiftExpression  = simpleExpression { ( ">>" | "<<" ) simpleExpression } .
 
 compareExpression = shiftExpression [ ( "==" | "!=" | "<" | ">" | "<=" | ">=" ) shiftExpression ] .
 
-expression      =  compareExpression  [ ( "||" | "&&"  )  compareExpression ] .
+andExpression = ["!"] compareExpression  [ ( "&&"  ) ["!"]  compareExpression ] .
+
+expression      =  ["!"] andExpression  [ ( "||" )  ["!"] andExpression ] .
 
 while            = "while" "(" expression ")"
                              ( statement |
