@@ -19,6 +19,7 @@ test: selfie
 	diff -q selfie3.s selfie4.s
 	diff -q selfie1.m selfie3.m
 	diff -q selfie1.s selfie3.s
+	say “Make test is finished successfully!”
 
 # Clean up
 clean:
