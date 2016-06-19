@@ -23,15 +23,11 @@ int main(int argc, int* argv) {
   //int a;
   //a = 12 /3;
 
-if(444==444 ) {
-    return 666;
-} else {
-    return 777;
-}
-
-
-
-
+    if(444==444 ) {
+        return 666;
+    } else {
+        return 777;
+    }
 
 
 }
