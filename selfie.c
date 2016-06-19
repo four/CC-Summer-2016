@@ -3895,13 +3895,39 @@ int isArrayOrStructSelector(){
 
       if (getAddress(entry) > 0) {
         load_variable(identifier);
+        if(symbol == SYM_LBRACKET){
+          type = parseArraySelector(attribute, type, entry);
+        }else if(symbol == SYM_ARROW){
+          getSymbol();
+          if(symbol == SYM_IDENTIFIER){
+            entry = getSymbolTableEntry(variableOrProcedureName, STRUCT);
+            if(entry != (int*) 0) {
+                    field = getVariable(identifier);
+                    if(field != (int*) 0 ) {
+                        type = load_variable(identifier);
+                        getSymbol();
+                    }else {
+                      syntaxErrorMessage((int*) "Field name doesn't exists");
+                    }
+            }else {
+                syntaxErrorMessage((int*) "Struct doesn't exists");
+            }
+          }else {
+              syntaxErrorMessage((int*) "identifier after -> expected");
+          }
+        }
 
-        type = parseArraySelector(attribute, type, entry);
       } else {
-        talloc();
-        emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), getAddress(entry));
-        type = parseArraySelector(attribute, type, entry);
-        emitRFormat(OP_SPECIAL, getScope(entry), currentTemporary(), currentTemporary(), FCT_ADDU);
+        if(symbol == SYM_LBRACKET){
+          talloc();
+          emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), getAddress(entry));
+          type = parseArraySelector(attribute, type, entry);
+          emitRFormat(OP_SPECIAL, getScope(entry), currentTemporary(), currentTemporary(), FCT_ADDU);
+        }else if(symbol == SYM_ARROW){
+          getSymbol();
+        }else if(symbol == SYM_DOT){
+          getSymbol();
+        }
       }
       return type;
     }
