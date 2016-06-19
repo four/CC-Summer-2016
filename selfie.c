@@ -2772,17 +2772,6 @@ int checkDereferenceForFactor(int type, int* attribute ){
   return type;
 }
 
-int isArrayOrStructSelector(){
-  if(symbol == SYM_LBRACKET){
-    return 1;
-  }else if(symbol == SYM_ARROW){
-    return 1;
-  }else if(symbol == SYM_DOT){
-    return 1;
-  }else{
-    return 0;
-  }
-}
 
 int checkSymbolAfterIdentifier(int type, int* variableOrProcedureName, int* entry){
   if (symbol == SYM_LPARENTHESIS) {
@@ -3896,6 +3885,66 @@ int dofixupChainInExpression(int * attribute, int  ltype, int rtype){
       return type;
     }
 
+    void loadConstantBeforeNonConstantRorSelector(int* attribute, int* entry, int dim){
+      int arrayLength;
+      arrayLength = 0;
+      if(dim == 1){
+        arrayLength = get1dArrayLength(entry);
+      }else if(dim == 2){
+          arrayLength = get2dArrayLength(entry);
+      }
+      if (getAttributeType(attribute)) {
+        if (getAttributeValue(attribute) < 0){
+          syntaxErrorMessage((int*) "No negative offset is allowed in arrays");
+        }else if (getAttributeValue(attribute) >= arrayLength){
+          syntaxErrorMessage((int*) "Array out of bounds");
+        }else{
+          load_integer(getAttributeValue(attribute));
+        }
+      }
+    }
+
+    int parseArraySelector(int* attribute, int type, int* entry){
+      int dim;
+      dim = 0;
+      getSymbol();
+      type = gr_compareExpression(attribute);
+      dim = 1;
+      loadConstantBeforeNonConstantRorSelector( attribute, entry,  dim);
+      checkSymbolAndGetNew(SYM_RBRACKET);
+      emitLeftShiftBy(2);
+      resetAttribute(attribute);
+      if (symbol == SYM_LBRACKET) {
+        talloc();
+        emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), get2dArrayLength(entry));
+        emitRFormat(OP_SPECIAL, currentTemporary(), previousTemporary(), 0, FCT_MULTU);
+        emitRFormat(OP_SPECIAL, 0, 0, previousTemporary(), FCT_MFLO);
+        tfree(1);
+        getSymbol();
+        type = gr_compareExpression(attribute);
+        dim = 2;
+         loadConstantBeforeNonConstantRorSelector( attribute, entry,  dim);
+        checkSymbolAndGetNew(SYM_RBRACKET);
+        emitLeftShiftBy(2);
+        emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_ADDU);
+        tfree(1);
+      }
+      emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_ADDU);
+      tfree(1);
+      return type;
+    }
+
+int isArrayOrStructSelector(){
+  if(symbol == SYM_LBRACKET){
+    return 1;
+  }else if(symbol == SYM_ARROW){
+    return 1;
+  }else if(symbol == SYM_DOT){
+    return 1;
+  }else{
+    return 0;
+  }
+}
 
     int gr_selector(){
       int* entry;
@@ -3903,99 +3952,19 @@ int dofixupChainInExpression(int * attribute, int  ltype, int rtype){
       int type2d;
       int* attribute;
 
+
       attribute = createAttribute();
       entry = getVariable(identifier);
 
 
       if (getAddress(entry) > 0) {
         load_variable(identifier);
-        getSymbol();
-        type = gr_compareExpression(attribute);
-        //load constant before non constant
-        if (getAttributeType(attribute)) {
-          if (getAttributeValue(attribute) < 0){
-            syntaxErrorMessage((int*) "No negative offset is allowed in arrays");
-          }else if (getAttributeValue(attribute) >= get1dArrayLength(entry)){
-            syntaxErrorMessage((int*) "Array out of bounds");
-          }else{
-            load_integer(getAttributeValue(attribute));
-          }
-        }
-        checkSymbolAndGetNew(SYM_RBRACKET);
-        emitLeftShiftBy(2);
-        setAttributeType(attribute,ATT_NOT);
-        setAttributeValue(attribute,0);
-        if (symbol == SYM_LBRACKET) {
-          talloc();
-          emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), get2dArrayLength(entry));
-          emitRFormat(OP_SPECIAL, currentTemporary(), previousTemporary(), 0, FCT_MULTU);
-          emitRFormat(OP_SPECIAL, 0, 0, previousTemporary(), FCT_MFLO);
-          tfree(1);
-          getSymbol();
-          type = gr_compareExpression(attribute);
 
-          if (getAttributeType(attribute)) {
-            if (getAttributeValue(attribute) < 0){
-              syntaxErrorMessage((int*) "No negative offset is allowed in arrays");
-            }else if (getAttributeValue(attribute) >= get2dArrayLength(entry)){
-              syntaxErrorMessage((int*) "Array out of bounds");
-            }else{
-              load_integer(getAttributeValue(attribute));
-            }
-          }
-          if (symbol != SYM_RBRACKET){
-            syntaxErrorSymbol(SYM_RBRACKET);
-          }
-          getSymbol();
-          emitLeftShiftBy(2);
-          emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_ADDU);
-          tfree(1);
-        }
-        emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_ADDU);
-        tfree(1);
+        type = parseArraySelector(attribute, type, entry);
       } else {
         talloc();
         emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), getAddress(entry));
-        getSymbol();
-        type = gr_compareExpression(attribute);
-        if (getAttributeType(attribute) == ATT_CONSTANT) {
-          if (getAttributeValue(attribute) < 0){
-            syntaxErrorMessage((int*) "No negative offset is allowed in arrays");
-          }else if (getAttributeValue(attribute) >= get1dArrayLength(entry)){
-            syntaxErrorMessage((int*) "Array out of bounds");
-          }else{
-            load_integer(getAttributeValue(attribute));
-          }
-        }
-        checkSymbolAndGetNew(SYM_RBRACKET);
-        emitLeftShiftBy(2);
-        setAttributeType(attribute,ATT_NOT);
-        setAttributeValue(attribute, 0);
-        if (symbol == SYM_LBRACKET) {
-          talloc();
-          emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), get2dArrayLength(entry));
-          emitRFormat(OP_SPECIAL, currentTemporary(), previousTemporary(), 0, FCT_MULTU);
-          emitRFormat(OP_SPECIAL, 0, 0, previousTemporary(), FCT_MFLO);
-          tfree(1);
-          getSymbol();
-          type = gr_compareExpression(attribute);
-          //load constant before non constant
-          if (getAttributeType(attribute) == ATT_CONSTANT ) {
-            if (getAttributeValue(attribute) < 0){
-              syntaxErrorMessage((int*) "No negative offset is allowed in arrays");
-            }else if (getAttributeValue(attribute) >= get2dArrayLength(entry)){
-              syntaxErrorMessage((int*) "Array out of bounds");
-            }else{
-              load_integer(getAttributeValue(attribute));
-            }
-          }
-          checkSymbolAndGetNew(SYM_RBRACKET);
-          emitLeftShiftBy(2);
-          emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_ADDU);
-          tfree(1);
-        }
-        emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_ADDU);
-        tfree(1);
+        type = parseArraySelector(attribute, type, entry);
         emitRFormat(OP_SPECIAL, getScope(entry), currentTemporary(), currentTemporary(), FCT_ADDU);
       }
       return type;
@@ -7526,13 +7495,6 @@ struct struct_1* test_struct;
 
           argc = argc - 1;
           argv = argv + 1;
-
-        print((int*)"SYMBOLS[1][1] = ");
-        print(itoa(SYMBOLS[SYM_WHILE][1], string_buffer, 10,0,0));
-        println();
-
-
-
 
           if (selfie(argc, (int*) argv) != 0) {
             print(selfieName);
