@@ -2015,6 +2015,13 @@ int getSymbol();
 
           symbol = SYM_AND;
         }
+      } else if (character == CHAR_I) {
+        getCharacter();
+        if(character == CHAR_I){
+          getCharacter();
+
+          symbol = SYM_OR;
+        }
       } else if (character == CHAR_RPARENTHESIS) {
         getCharacter();
 
@@ -2764,7 +2771,19 @@ int checkDereferenceForFactor(int type, int* attribute ){
   return type;
 }
 
-int checkSymbolAfterIdentifier(int type, int* variableOrProcedureName, int* entry){//STRUCT_ACCESSS!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+int isArrayOrStructSelector(){
+  if(symbol == SYM_LBRACKET){
+    return 1;
+  }else if(symbol == SYM_ARROW){
+    return 1;
+  }else if(symbol == SYM_DOT){
+    return 1;
+  }else{
+    return 0;
+  }
+}
+
+int checkSymbolAfterIdentifier(int type, int* variableOrProcedureName, int* entry){
   if (symbol == SYM_LPARENTHESIS) {
     getSymbol();
     // function call: identifier "("?
@@ -2773,7 +2792,7 @@ int checkSymbolAfterIdentifier(int type, int* variableOrProcedureName, int* entr
     emitIFormat(OP_ADDIU, REG_V0, currentTemporary(), 0);
     emitIFormat(OP_ADDIU, REG_ZR, REG_V0, 0);
       // array[i][j]: identifier "["?
-  }else if(symbol==SYM_LBRACKET){
+  }else if(isArrayOrStructSelector()){
     type = gr_selector();
     if (type == INTARRAY_T){
       type = INT_T;
@@ -3751,7 +3770,7 @@ int dofixupChainInExpression(int * attribute, int  ltype, int rtype){
           gr_call(variableOrProcedureName);
           emitIFormat(OP_ADDIU, REG_ZR, REG_V0, 0);
           checkSymbol(SYM_SEMICOLON);
-        }else if(symbol == SYM_LBRACKET){
+        }else if(isArrayOrStructSelector()){
           ltype = gr_selector();
           if (symbol == SYM_ASSIGN) {
             getSymbol();
@@ -3813,49 +3832,35 @@ int dofixupChainInExpression(int * attribute, int  ltype, int rtype){
       return type;
     }
 
-    void loadConstantBeforeNonConstantForSelector(int* attribute, int* entry, int dim){
-      int arrayLength;
-      if(dim == 1){
-        arrayLength = get1dArrayLength(entry);
-      }else if(dim == 2){
-        arrayLength = get2dArrayLength(entry);
-      }
 
-      if (getAttributeType(attribute)) {
-        if (getAttributeValue(attribute) < 0){
-          syntaxErrorMessage((int*) "No negative offset is allowed in arrays");
-        }else if (getAttributeValue(attribute) >= arrayLength){
-          syntaxErrorMessage((int*) "Array out of bounds");
-        }else{
-          load_integer(getAttributeValue(attribute));
-        }
-      }
-    }
-
-
-    int gr_selector(){//STRUCT_ACCESSS!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    int gr_selector(){
       int* entry;
       int type;
       int type2d;
       int* attribute;
-      int dim;
-      dim = 0;
 
       attribute = createAttribute();
       entry = getVariable(identifier);
 
-//loads  a variable to the register
-      if (getAddress(entry) > 0) {print((int*)"ARRAY ACCESS????????");println();
+
+      if (getAddress(entry) > 0) {
         load_variable(identifier);
         getSymbol();
         type = gr_compareExpression(attribute);
-        dim = 1;
-        loadConstantBeforeNonConstantForSelector(attribute, entry,  dim);
+        //load constant before non constant
+        if (getAttributeType(attribute)) {
+          if (getAttributeValue(attribute) < 0){
+            syntaxErrorMessage((int*) "No negative offset is allowed in arrays");
+          }else if (getAttributeValue(attribute) >= get1dArrayLength(entry)){
+            syntaxErrorMessage((int*) "Array out of bounds");
+          }else{
+            load_integer(getAttributeValue(attribute));
+          }
+        }
         checkSymbolAndGetNew(SYM_RBRACKET);
-        resetAttribute(attribute);
         emitLeftShiftBy(2);
-
-      //2 dimention
+        setAttributeType(attribute,ATT_NOT);
+        setAttributeValue(attribute,0);
         if (symbol == SYM_LBRACKET) {
           talloc();
           emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), get2dArrayLength(entry));
@@ -3864,31 +3869,44 @@ int dofixupChainInExpression(int * attribute, int  ltype, int rtype){
           tfree(1);
           getSymbol();
           type = gr_compareExpression(attribute);
-          dim = 2;
-          loadConstantBeforeNonConstantForSelector(attribute, entry,  dim);
-          checkSymbolAndGetNew(SYM_RBRACKET);
+
+          if (getAttributeType(attribute)) {
+            if (getAttributeValue(attribute) < 0){
+              syntaxErrorMessage((int*) "No negative offset is allowed in arrays");
+            }else if (getAttributeValue(attribute) >= get2dArrayLength(entry)){
+              syntaxErrorMessage((int*) "Array out of bounds");
+            }else{
+              load_integer(getAttributeValue(attribute));
+            }
+          }
+          if (symbol != SYM_RBRACKET){
+            syntaxErrorSymbol(SYM_RBRACKET);
+          }
+          getSymbol();
           emitLeftShiftBy(2);
           emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_ADDU);
           tfree(1);
         }
         emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_ADDU);
         tfree(1);
-
-
-
-
       } else {
         talloc();
         emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), getAddress(entry));
         getSymbol();
         type = gr_compareExpression(attribute);
-        dim = 1;
-        loadConstantBeforeNonConstantForSelector(attribute, entry,  dim);
+        if (getAttributeType(attribute) == ATT_CONSTANT) {
+          if (getAttributeValue(attribute) < 0){
+            syntaxErrorMessage((int*) "No negative offset is allowed in arrays");
+          }else if (getAttributeValue(attribute) >= get1dArrayLength(entry)){
+            syntaxErrorMessage((int*) "Array out of bounds");
+          }else{
+            load_integer(getAttributeValue(attribute));
+          }
+        }
         checkSymbolAndGetNew(SYM_RBRACKET);
         emitLeftShiftBy(2);
-        resetAttribute(attribute);
-
-        //2 dimention
+        setAttributeType(attribute,ATT_NOT);
+        setAttributeValue(attribute, 0);
         if (symbol == SYM_LBRACKET) {
           talloc();
           emitIFormat(OP_ADDIU, REG_ZR, currentTemporary(), get2dArrayLength(entry));
@@ -3898,18 +3916,23 @@ int dofixupChainInExpression(int * attribute, int  ltype, int rtype){
           getSymbol();
           type = gr_compareExpression(attribute);
           //load constant before non constant
-          dim = 2;
-          loadConstantBeforeNonConstantForSelector(attribute, entry,  dim);
+          if (getAttributeType(attribute) == ATT_CONSTANT ) {
+            if (getAttributeValue(attribute) < 0){
+              syntaxErrorMessage((int*) "No negative offset is allowed in arrays");
+            }else if (getAttributeValue(attribute) >= get2dArrayLength(entry)){
+              syntaxErrorMessage((int*) "Array out of bounds");
+            }else{
+              load_integer(getAttributeValue(attribute));
+            }
+          }
           checkSymbolAndGetNew(SYM_RBRACKET);
           emitLeftShiftBy(2);
           emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_ADDU);
           tfree(1);
         }
-
         emitRFormat(OP_SPECIAL, previousTemporary(), currentTemporary(), previousTemporary(), FCT_ADDU);
         tfree(1);
         emitRFormat(OP_SPECIAL, getScope(entry), currentTemporary(), currentTemporary(), FCT_ADDU);
-
       }
       return type;
     }
@@ -4422,7 +4445,7 @@ int parseSelectorDeclaration(int size){
       int c;
       c = 0;
 
-      while (c < 35) {
+      while (c < 38) {
         print((int*) "Symbol: ");
         printSymbol(c);
         print((int*) " : ");
@@ -7440,11 +7463,10 @@ struct struct_1* test_struct;
           argc = argc - 1;
           argv = argv + 1;
 
+        print((int*)"SYMBOLS[1][1] = ");
+        print(itoa(SYMBOLS[SYM_WHILE][1], string_buffer, 10,0,0));
+        println();
 
-          print((int*)"SYMBOLS[SYM_DIV][1]");
-          println();
-          print(itoa(SYMBOLS[symbol][0],string_buffer,0,0,10));
-          println();
 
 
 
