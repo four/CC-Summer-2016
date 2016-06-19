@@ -1,6 +1,7 @@
 
 int array[23][2];
 
+int array[1][2];
 int main(int argc, int* argv) {
 //array access first
 //int* array; //size is 3

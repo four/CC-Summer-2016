@@ -17,35 +17,34 @@ Keywords: int, while, if, else, return, void
 
 
 ```
-digit            = "0" | ... | "9" .                                              // 1, 2, 3, 4, 5, 6, 7, 8, 9
+digit            = "0" | ... | "9" .                                            
 
-integer          = digit { digit } .                                              //3, 6, 121, 455453242, 0
+integer          = digit { digit } .                                            
 
-letter           = "a" | ... | "z" | "A" | ... | "Z" .                            //a, b, ... ,z, A, B, ...,Z
+letter           = "a" | ... | "z" | "A" | ... | "Z" .                          
 
-identifier       = letter { letter | digit | "_" } .                              //a, v, s3, a_gd4 - variable name
+identifier       = letter { letter | digit | "_" } .                            
 
-type             = "int" [ "*" ] | "struct" identifier "*".                                                //int* or int
+type             = "int" [ "*" ] | "struct" identifier "*".                      
 
-selector         = [ ("."|"->") identifier | { "[" expression "]" ["[" expression "]"] } ] .                       //for 1dim and 2dim arrays               //[5],[i],[a+45],
-                                                                                  //[5*6],[25%5],[x+y-34*a],[34<<67]
+selector         = [ ("."|"->") identifier | { "[" expression "]" ["[" expression "]"] } ] .                       
 
-cast             = "(" type ")" .                                                 //(int) or (int*)
+cast             = "(" type ")" .                                                
 
-call             = identifier "(" [ expression { "," expression } ] ")" .         //f(a,b,c+d*a)
+call             = identifier "(" [ expression { "," expression } ] ")" .        
 
-literal          = integer | "'" ascii_character "'" .                            // 45, 1, 444343, 'a', 'R'
+literal          = integer | "'" ascii_character "'" .                           
 
-factor           = [ cast ]                                                       //a, (int)a
+factor           = [ cast ]                                                      
                     ( [ "*" ] ( identifier [ selector ] | "(" expression ")" ) |
-                      call |                                                      //(int) f(b,45), a, *a
-                      literal |                                                   // (int) 34, 45, (int) 'a', 'b'
+                      call |                                                      
+                      literal |                                                 
                       "struct" identifier "->" identifier |
-                      """ { ascii_character } """ ) .                             // 'b'
+                      """ { ascii_character } """ ) .                           
 
-term             = factor { ( "*" | "/" | "%" ) factor } .                        //56, 56*a, 45/(int)'a'
+term             = factor { ( "*" | "/" | "%" ) factor } .                       
 
-simpleExpression = [ "-" ] term { ( "+" | "-" ) term } .                          //- 45*a/(int)'a'
+simpleExpression = [ "-" ] term { ( "+" | "-" ) term } .                        
 
 shiftExpression  = simpleExpression { ( ">>" | "<<" ) simpleExpression } .
 
@@ -66,7 +65,7 @@ if               = "if" "(" expression ")"
 
 return           = "return" [ expression ] .
 
-statement        = ( [ "*" ] identifier [ selector ] | "*" "(" expression ")" ) "=" expression ";" |  //int a[3] = ...;  a[6] = ;                               
+statement        = ( [ "*" ] identifier [ selector ] | "*" "(" expression ")" ) "=" expression ";" |  
                   call ";" |
                     while |
                     if |
@@ -76,9 +75,9 @@ variable         = type identifier [ "[" integer "]" ] | "struct" identifier "*"
 
 struct           = "struct" identifier "{" { variable ";" } "}" ";"
 
-procedure        = "(" [ variable { "," variable } ] ")"                //(int a[10], int b[4]); or (int a[10], int b[4]){ int c[4]; c[3] = 0;}
+procedure        = "(" [ variable { "," variable } ] ")"              
                     ( ";" | "{" { variable ";" } { statement } "}" ) .
 
-cstar(R)           = { type identifier (  [ selector ] | [ "=" [ cast ] [ "-" ] literal ] ) ";" |     // int a = 3;, int a; int a[5][56]; int a[5];
-                   ( "void" | type ) identifier procedure }  |                                   //void a(...){...}, int a(...){...}
+cstar(R)           = { type identifier (  [ selector ] | [ "=" [ cast ] [ "-" ] literal ] ) ";" |    
+                   ( "void" | type ) identifier procedure }  |                                
                    (struct ) .  

@@ -2015,6 +2015,13 @@ int getSymbol();
 
           symbol = SYM_AND;
         }
+      } else if (character == CHAR_I) {
+        getCharacter();
+        if(character == CHAR_I){
+          getCharacter();
+
+          symbol = SYM_OR;
+        }
       } else if (character == CHAR_RPARENTHESIS) {
         getCharacter();
 
@@ -2764,6 +2771,18 @@ int checkDereferenceForFactor(int type, int* attribute ){
   return type;
 }
 
+int isArrayOrStructSelector(){
+  if(symbol == SYM_LBRACKET){
+    return 1;
+  }else if(symbol == SYM_ARROW){
+    return 1;
+  }else if(symbol == SYM_DOT){
+    return 1;
+  }else{
+    return 0;
+  }
+}
+
 int checkSymbolAfterIdentifier(int type, int* variableOrProcedureName, int* entry){
   if (symbol == SYM_LPARENTHESIS) {
     getSymbol();
@@ -2773,7 +2792,7 @@ int checkSymbolAfterIdentifier(int type, int* variableOrProcedureName, int* entr
     emitIFormat(OP_ADDIU, REG_V0, currentTemporary(), 0);
     emitIFormat(OP_ADDIU, REG_ZR, REG_V0, 0);
       // array[i][j]: identifier "["?
-  }else if(symbol==SYM_LBRACKET){
+  }else if(isArrayOrStructSelector()){
     type = gr_selector();
     if (type == INTARRAY_T){
       type = INT_T;
@@ -3751,7 +3770,7 @@ int dofixupChainInExpression(int * attribute, int  ltype, int rtype){
           gr_call(variableOrProcedureName);
           emitIFormat(OP_ADDIU, REG_ZR, REG_V0, 0);
           checkSymbol(SYM_SEMICOLON);
-        }else if(symbol == SYM_LBRACKET){
+        }else if(isArrayOrStructSelector()){
           ltype = gr_selector();
           if (symbol == SYM_ASSIGN) {
             getSymbol();
@@ -3822,6 +3841,7 @@ int dofixupChainInExpression(int * attribute, int  ltype, int rtype){
 
       attribute = createAttribute();
       entry = getVariable(identifier);
+
 
       if (getAddress(entry) > 0) {
         load_variable(identifier);
@@ -4425,7 +4445,7 @@ int parseSelectorDeclaration(int size){
       int c;
       c = 0;
 
-      while (c < 35) {
+      while (c < 38) {
         print((int*) "Symbol: ");
         printSymbol(c);
         print((int*) " : ");
@@ -7443,12 +7463,9 @@ struct struct_1* test_struct;
           argc = argc - 1;
           argv = argv + 1;
 
-        //  int a;
-        // a = test_struct->a;
-        //  test_struct->a = 4;
-        //  int b;
-        //  b = struct_1.b;
-        //  struct_1.b = 3;
+        print((int*)"SYMBOLS[1][1] = ");
+        print(itoa(SYMBOLS[SYM_WHILE][1], string_buffer, 10,0,0));
+        println();
 
 
 
