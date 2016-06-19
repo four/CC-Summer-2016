@@ -2685,7 +2685,7 @@ int getSymbol();
     }
 
 void parseExpressionForCall(int* attribute){
-  gr_compareExpression(attribute);
+  gr_expression(attribute);
   loadConstantBeforeNonConstant(attribute);
   emitIFormat(OP_ADDIU, REG_SP, REG_SP, -WORDSIZE);
   emitIFormat(OP_SW, REG_SP, currentTemporary(), 0);
@@ -2749,7 +2749,7 @@ int checkDereferenceForFactor(int type, int* attribute ){
     // * "(" expression ")"
   } else if (symbol == SYM_LPARENTHESIS) {
     getSymbol();
-    type = gr_compareExpression(attribute);
+    type = gr_expression(attribute);
     loadConstantBeforeNonConstant(attribute);
     checkSymbol(SYM_RPARENTHESIS);
   } else{
@@ -2825,7 +2825,7 @@ int gr_factor(int* attribute) {
           checkSymbol(SYM_RPARENTHESIS);
           // not a cast: "(" expression ")"
         } else {
-          type = gr_compareExpression(attribute);
+          type = gr_expression(attribute);
           loadConstantBeforeNonConstant(attribute);
           checkSymbol(SYM_RPARENTHESIS);
           // assert: allocatedTemporaries == n + 1
@@ -2863,7 +2863,7 @@ int gr_factor(int* attribute) {
         //  "(" expression ")"
       } else if (symbol == SYM_LPARENTHESIS) {
         getSymbol();
-        type = gr_compareExpression(attribute);
+        type = gr_expression(attribute);
         loadConstantBeforeNonConstant(attribute);
         checkSymbol(SYM_RPARENTHESIS);
       } else{
@@ -3527,7 +3527,7 @@ int dofixupChainInExpression(int * attribute, int  ltype, int rtype){
         if (symbol == SYM_LPARENTHESIS) {
           getSymbol();
           // "while" "(" expression
-          gr_compareExpression(attribute);
+          gr_expression(attribute);
           loadConstantBeforeNonConstant(attribute);
           brForwardToEnd = binaryLength;
           emitIFormat(OP_BEQ, REG_ZR, currentTemporary(), 0);
@@ -3586,7 +3586,7 @@ int dofixupChainInExpression(int * attribute, int  ltype, int rtype){
         if (symbol == SYM_LPARENTHESIS) {
           getSymbol();
           // if "(" expression
-          gr_compareExpression(attribute);
+          gr_expression(attribute);
           loadConstantBeforeNonConstant(attribute);
           brForwardToElseOrEnd = binaryLength;
           emitIFormat(OP_BEQ, REG_ZR, currentTemporary(), 0);
@@ -3653,7 +3653,7 @@ int dofixupChainInExpression(int * attribute, int  ltype, int rtype){
       checkSymbol(SYM_RETURN);
       // optional: expression
       if (symbol != SYM_SEMICOLON) {
-        type = gr_compareExpression(attribute);
+        type = gr_expression(attribute);
         loadConstantBeforeNonConstant(attribute);
         if (returnType == VOID_T){
           typeWarning(type, returnType);
@@ -3700,7 +3700,7 @@ int dofixupChainInExpression(int * attribute, int  ltype, int rtype){
           // "*" identifier "="
           if (symbol == SYM_ASSIGN) {
             getSymbol();
-            rtype = gr_compareExpression(attribute);
+            rtype = gr_expression(attribute);
             loadConstantBeforeNonConstant(attribute);
             if (rtype != INT_T){
               typeWarning(INT_T, rtype);
@@ -3714,7 +3714,7 @@ int dofixupChainInExpression(int * attribute, int  ltype, int rtype){
           // "*" "(" expression ")"
         } else if (symbol == SYM_LPARENTHESIS) {
           getSymbol();
-          ltype = gr_compareExpression(attribute);
+          ltype = gr_expression(attribute);
           loadConstantBeforeNonConstant(attribute);
           if (ltype != INTSTAR_T){
             typeWarning(INTSTAR_T, ltype);
@@ -3724,7 +3724,7 @@ int dofixupChainInExpression(int * attribute, int  ltype, int rtype){
             // "*" "(" expression ")" "="
             if (symbol == SYM_ASSIGN) {
               getSymbol();
-              rtype = gr_compareExpression(attribute);
+              rtype = gr_expression(attribute);
               loadConstantBeforeNonConstant(attribute);
               if (rtype != INT_T){
                 typeWarning(INT_T, rtype);
@@ -3755,7 +3755,7 @@ int dofixupChainInExpression(int * attribute, int  ltype, int rtype){
           ltype = gr_selector();
           if (symbol == SYM_ASSIGN) {
             getSymbol();
-            rtype = gr_compareExpression(attribute);
+            rtype = gr_expression(attribute);
             loadConstantBeforeNonConstant(attribute);
             emitIFormat(OP_SW, previousTemporary(), currentTemporary(), 0);
             tfree(2);
@@ -3767,7 +3767,7 @@ int dofixupChainInExpression(int * attribute, int  ltype, int rtype){
           entry = getVariable(variableOrProcedureName);
           ltype = getType(entry);
           getSymbol();
-          rtype = gr_compareExpression(attribute);
+          rtype = gr_expression(attribute);
           loadConstantBeforeNonConstant(attribute);
           if (ltype != rtype){
             typeWarning(ltype, rtype);
@@ -6413,14 +6413,40 @@ int parseSelectorDeclaration(int size){
           }
         }
         void fct_sll(){
-          if (debug) {
-            printFunction(function);
-            print((int*) " ");
-            printRegister(rd);
-            print((int*) ",");
-            printRegister(rt);
-            print((int*) ",");
-            print(itoa(shamt, string_buffer, 10, 0, 0));
+        if (debug) {
+            if (rd == 0) {
+                if (rt == 0) {
+                    if(shamt == 0) {
+                        // printFunction(FCT_NOP);
+                        print((int*) "nop");
+                    } else {
+                         printFunction(function);
+                         print((int*) " ");
+                         printRegister(rd);
+                         print((int*) ",");
+                         printRegister(rt);
+                         print((int*) ",");
+                         print(itoa(shamt, string_buffer, 10, 0, 0));
+                     }
+                } else {
+                    printFunction(function);
+                    print((int*) " ");
+                    printRegister(rd);
+                    print((int*) ",");
+                    printRegister(rt);
+                    print((int*) ",");
+                    print(itoa(shamt, string_buffer, 10, 0, 0));
+                }
+            } else {
+                printFunction(function);
+                print((int*) " ");
+                printRegister(rd);
+                print((int*) ",");
+                printRegister(rt);
+                print((int*) ",");
+                print(itoa(shamt, string_buffer, 10, 0, 0));
+            }
+
 
             if (interpret) {
               print((int*) ": ");
@@ -7417,7 +7443,7 @@ struct struct_1* test_struct;
 
           print((int*)"SYMBOLS[SYM_DIV][1]");
           println();
-        //  print(itoa(SYMBOLS[symbol][0],string_buffer,0,0,10));
+          print(itoa(SYMBOLS[symbol][0],string_buffer,0,0,10));
           println();
 
 
