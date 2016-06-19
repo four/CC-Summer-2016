@@ -13,18 +13,14 @@ test: selfie
 	./selfie -c selfie.c -o selfie1.m -s selfie1.s -m 2 -c selfie.c -o selfie2.m -s selfie2.s
 	diff -q selfie1.m selfie2.m
 	diff -q selfie1.s selfie2.s
-	command -v foo >/dev/null 2>&1 && say -v Bells "diff one done" || 0
+	command -v say >/dev/null 2>&1 && say -v Bells "diff one done" || echo
 	./selfie -c selfie.c -o selfie.m -m 2 -l selfie.m -m 1
 	./selfie -c selfie.c -o selfie3.m -s selfie3.s -y 8 -l selfie3.m -y 4 -l selfie3.m -y 2 -c selfie.c -o selfie4.m -s selfie4.s
 	diff -q selfie3.m selfie4.m
 	diff -q selfie3.s selfie4.s
 	diff -q selfie1.m selfie3.m
 	diff -q selfie1.s selfie3.s
-<<<<<<< HEAD
-	say “Make test is finished successfully!”
-=======
-	command -v foo >/dev/null 2>&1 && say -v Bells "Finished test" || 0
->>>>>>> 8f5fa4d2cc6d40da5e9eda0224a2080e3deb4093
+	command -v say >/dev/null 2>&1 && say -v Bells "Finished test" || echo
 
 # Clean up
 clean:
