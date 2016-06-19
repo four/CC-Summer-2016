@@ -3887,7 +3887,7 @@ int isArrayOrStructSelector(){
       int type;
       int type2d;
       int* attribute;
-
+      int* field;
 
       attribute = createAttribute();
       entry = getVariable(identifier);
