@@ -7416,8 +7416,6 @@ int parseSelectorDeclaration(int size){
 
 struct struct_1* test_struct;
 
-int a;
-int b;
         int main(int argc, int* argv) {
 
           initLibrary();
@@ -7433,21 +7431,6 @@ int b;
 
           argc = argc - 1;
           argv = argv + 1;
-
-        print((int*)"SYMBOLS[1][1] = ");
-        print(itoa(SYMBOLS[SYM_WHILE][1], string_buffer, 10,0,0));
-        println();
-
-        a = 2;
-        b = 2;
-
-        if( a==b && a == b+1){
-          print(itoa(a,string_buffer,10,0,0));
-          println();
-          print(itoa(b,string_buffer,10,0,0));
-          println();
-        }
-
 
           if (selfie(argc, (int*) argv) != 0) {
             print(selfieName);
