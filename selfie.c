@@ -532,6 +532,7 @@ int getSymbol();
     int isStarOrDivOrModulo();
     int isPlusOrMinus();
     int isComparison();
+    int isBooleanSymbol();
     int isShift();
     int isStarStruct(int type);
 
@@ -2293,6 +2294,15 @@ int getSymbol();
       return 0;
     }
 
+    int isBooleanSymbol() {
+        if (symbol == SYM_AND)
+            return 1;
+        else if (symbol == SYM_OR)
+            return 1;
+        else
+            return 0;
+    }
+
     int isShift() {
       if (symbol == SYM_LEFT_SHIFT)
       return 1;
@@ -3191,7 +3201,7 @@ int foldTerm(int* attribute, int ltype, int operatorSymbol, int rtype){
                    } else if (operatorSymbol == SYM_RIGHT_SHIFT) {
                        latt_const = latt_const >> getAttributeValue(attribute);
                    }
-               } else {//latt_type == ATT_CONSTANT
+               } else {//latt_type == ATT_CONSTANT;
                    latt_const = getAttributeValue(attribute);
                    load_integer(latt_const);
                    emitCodeForOperator(operatorSymbol,ltype, rtype);
@@ -3208,7 +3218,7 @@ int foldTerm(int* attribute, int ltype, int operatorSymbol, int rtype){
                    }
                    tfree(1);
                    latt_type = ATT_CONSTANT;
-               } else {// latt_type == ATT_CONSTANT
+               } else {// latt_type == ATT_CONSTANT;
                    emitCodeForOperator(operatorSymbol,ltype, rtype);
                }
            }
@@ -3267,7 +3277,7 @@ int foldCompareExpression(int* attribute, int ltype, int operatorSymbol, int rty
                         } else {
                             latt_const = 0;
                         }
-                    } else {//latt_type == ATT_CONSTANT
+                    } else {//latt_type == ATT_CONSTANT;
                         load_integer(getAttributeValue(attribute));
                     }
 
@@ -3492,7 +3502,7 @@ int dofixupChainInExpression(int * attribute, int  ltype, int rtype){
       rtype = 0;
 
       // assert: n = allocatedTemporaries
-      ltype = gr_compareEpression(attribute);
+      ltype = gr_compareExpression(attribute);
       // assert: allocatedTemporaries == n + 1
       ltype = dofixupChainInExpression(attribute, ltype, rtype);
 
