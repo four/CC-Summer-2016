@@ -13,12 +13,14 @@ test: selfie
 	./selfie -c selfie.c -o selfie1.m -s selfie1.s -m 2 -c selfie.c -o selfie2.m -s selfie2.s
 	diff -q selfie1.m selfie2.m
 	diff -q selfie1.s selfie2.s
+	say -v Bells "diff one done"
 	./selfie -c selfie.c -o selfie.m -m 2 -l selfie.m -m 1
 	./selfie -c selfie.c -o selfie3.m -s selfie3.s -y 8 -l selfie3.m -y 4 -l selfie3.m -y 2 -c selfie.c -o selfie4.m -s selfie4.s
 	diff -q selfie3.m selfie4.m
 	diff -q selfie3.s selfie4.s
 	diff -q selfie1.m selfie3.m
 	diff -q selfie1.s selfie3.s
+	say -v Bells "Finished test"
 
 # Clean up
 clean:
