@@ -112,6 +112,7 @@ void printString(int* s);
 int roundUp(int n, int m);
 
 int* malloc(int size);
+void free(int* address);
 void exit(int code);
 
 // ------------------------ GLOBAL CONSTANTS -----------------------
@@ -332,6 +333,7 @@ int getSymbol();
     int* sourceName = (int*) 0; // name of source file
     int  sourceFD   = 0;        // file descriptor of open source file
 
+    int pointerForFree = 0;//to free an address of memory
     // ------------------------- INITIALIZATION ------------------------
 
     void initScanner () {
@@ -866,6 +868,7 @@ int getSymbol();
     void implementOpen();
 
     void emitMalloc();
+    void emitFree();
     void implementMalloc();
 
     // ------------------------ GLOBAL CONSTANTS -----------------------
@@ -875,6 +878,7 @@ int getSymbol();
     int debug_open   = 0;
 
     int debug_malloc = 0;
+    int debug_free   = 0;
 
     int SYSCALL_EXIT   = 4001;
     int SYSCALL_READ   = 4003;
@@ -936,7 +940,7 @@ int getSymbol();
     int SYSCALL_STATUS = 4904;
     int SYSCALL_DELETE = 4905;
     int SYSCALL_MAP    = 4906;
-
+    int SYSCALL_FREE   = 4907;
     // *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~
     // -----------------------------------------------------------------
     // ---------------------    E M U L A T O R    ---------------------
@@ -3888,6 +3892,8 @@ int isArrayOrStructSelector(){
       int type2d;
       int* attribute;
       int* field;
+      int* variableOrProcedureName;
+
 
       attribute = createAttribute();
       entry = getVariable(identifier);
@@ -3895,27 +3901,24 @@ int isArrayOrStructSelector(){
 
       if (getAddress(entry) > 0) {
         load_variable(identifier);
-        if(symbol == SYM_LBRACKET){
-          type = parseArraySelector(attribute, type, entry);
-        }else if(symbol == SYM_ARROW){
+         if(symbol == SYM_LBRACKET){
+         type = parseArraySelector(attribute, type, entry);
+       }else if(symbol == SYM_ARROW){
           getSymbol();
           if(symbol == SYM_IDENTIFIER){
             entry = getSymbolTableEntry(variableOrProcedureName, STRUCT);
             if(entry != (int*) 0) {
                     field = getVariable(identifier);
                     if(field != (int*) 0 ) {
-                        type = load_variable(identifier);
-                        getSymbol();
-                    }else {
-                      syntaxErrorMessage((int*) "Field name doesn't exists");
-                    }
-            }else {
-                syntaxErrorMessage((int*) "Struct doesn't exists");
-            }
-          }else {
-              syntaxErrorMessage((int*) "identifier after -> expected");
-          }
-        }
+                       type = load_variable(identifier);
+                       getSymbol();
+                      if(symbol == SYM_LBRACKET){
+                          type = parseArraySelector(attribute, type, entry);
+                        }
+                    }else {  syntaxErrorMessage((int*) "Field name doesn't exists");  }
+            }else {  syntaxErrorMessage((int*) "Struct doesn't exists");  }
+          }else {  syntaxErrorMessage((int*) "identifier after -> expected");  }
+       }
 
       } else {
         if(symbol == SYM_LBRACKET){
@@ -4133,6 +4136,8 @@ int isArrayOrStructSelector(){
         syntaxErrorUnexpected();
       }
       local_symbol_table = (int*) 0;
+      free(local_symbol_table);
+
       // assert: allocatedTemporaries == 0
     }
 
@@ -4412,6 +4417,7 @@ int parseSelectorDeclaration(int size){
       emitWrite();
       emitOpen();
       emitMalloc();
+      emitFree();
 
       emitID();
       emitCreate();
@@ -5201,6 +5207,7 @@ int parseSelectorDeclaration(int size){
           emitRFormat(OP_SPECIAL, REG_RA, 0, 0, FCT_JR);
         }
 
+
         int down_loadString(int* table, int vaddr, int* s) {
           int i;
           int* paddr;
@@ -5304,6 +5311,9 @@ int parseSelectorDeclaration(int size){
         void implementMalloc() {
           int size;
           int bump;
+          int symbolTableEntrySize;
+
+          symbolTableEntrySize = 3 * SIZEOFINTSTAR + 8 * SIZEOFINT;
 
           if (debug_malloc) {
             print(binaryName);
@@ -5315,24 +5325,74 @@ int parseSelectorDeclaration(int size){
 
           size = roundUp(*(registers+REG_A0), WORDSIZE);
 
-          bump = brk;
+          if (size == symbolTableEntrySize && pointerForFree != 0) {
 
-          if (bump + size >= *(registers+REG_SP))
-          throwException(EXCEPTION_HEAPOVERFLOW, 0);
-          else {
-            *(registers+REG_V0) = bump;
+            *(registers + REG_V0) = (int) pointerForFree;
+            pointerForFree = loadVirtualMemory(pt, pointerForFree);
 
-            brk = bump + size;
+    if (debug_malloc) {
+      print(binaryName);
+      print((int*) ": reusing ");
+      print(itoa(size, string_buffer, 10, 0, 0));
+      print((int*) " bytes freed from the virtual address ");
+      print(itoa(*(registers + REG_V0), string_buffer, 16, 8, 0));
+      println();
+    }
 
-            if (debug_malloc) {
-              print(binaryName);
-              print((int*) ": actually mallocating ");
-              print(itoa(size, string_buffer, 10, 0, 0));
-              print((int*) " bytes at virtual address ");
-              print(itoa(bump, string_buffer, 16, 8, 0));
-              println();
-            }
+  } else {
+    bump = brk;
+
+    if (bump + size >= *(registers + REG_SP))
+      throwException(EXCEPTION_HEAPOVERFLOW, 0);
+    else {
+      *(registers + REG_V0) = bump;
+      brk = bump + size;
+
+      if (debug_malloc) {
+        print(binaryName);
+        print((int*) ": actually mallocating ");
+        print(itoa(size, string_buffer, 10, 0, 0));
+        print((int*) " bytes at virtual address ");
+        print(itoa(bump, string_buffer, 16, 8, 0));
+        println();
+      }
+    }
+  }
+        }
+
+
+        void emitFree(){
+          createSymbolTableEntry(LIBRARY_TABLE, (int*) "free", 0, PROCEDURE, VOID_T, 0, binaryLength, 1, 1);
+
+          emitIFormat(OP_LW, REG_SP, REG_A2, 0); // size
+          emitIFormat(OP_ADDIU, REG_SP, REG_SP, WORDSIZE);
+
+          emitIFormat(OP_ADDIU, REG_ZR, REG_V0, SYSCALL_FREE);
+          emitRFormat(OP_SPECIAL, 0, 0, 0, FCT_SYSCALL);
+
+          emitRFormat(OP_SPECIAL, REG_RA, 0, 0, FCT_JR);
+            // never returns here
+        }
+
+        void implementFree(){
+
+          if (debug_free) {
+            print(binaryName);
+            print((int*) ": trying to free ");
+            print(itoa(*(registers + REG_A0), string_buffer, 10, 0, 0));
+            println();
           }
+
+          storeVirtualMemory(pt, *(registers + REG_A0), pointerForFree);
+           pointerForFree = *(registers + REG_A0);
+
+          if (debug_free) {
+            print(binaryName);
+            print((int*) "the entry freed from local symbol table ");
+            print(itoa(*(registers + REG_A0), string_buffer, 16, 0, 0));
+            println();
+          }
+          *(registers + REG_V0) = 0;
         }
 
         // -----------------------------------------------------------------
@@ -5796,6 +5856,8 @@ int parseSelectorDeclaration(int size){
             implementOpen();
             else if (*(registers+REG_V0) == SYSCALL_MALLOC)
             implementMalloc();
+            else if (*(registers+REG_V0) == SYSCALL_FREE)
+            implementFree();
             else if (*(registers+REG_V0) == SYSCALL_ID)
             implementID();
             else if (*(registers+REG_V0) == SYSCALL_CREATE)
@@ -7457,6 +7519,10 @@ struct struct_1* test_struct;
 
           argc = argc - 1;
           argv = argv + 1;
+
+          //test_struct->a1d[3] = 10;
+          //print(itoa(test_struct->a1d[3],string_buffer,10,0,0));
+        //  println();
 
           if (selfie(argc, (int*) argv) != 0) {
             print(selfieName);
