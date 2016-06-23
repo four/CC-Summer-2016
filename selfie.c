@@ -569,6 +569,7 @@ int getSymbol();
     int  gr_simpleExpression(int* attribute);
     int  gr_shiftExpression(int * attribute);
     int  gr_compareExpression(int* attribute);
+    int  gr_andExpression(int* attribute);
     int  gr_expression(int* attribute);
     void gr_while();
     void gr_if();
@@ -3435,7 +3436,7 @@ int foldCompareExpression(int* attribute, int ltype, int operatorSymbol, int rty
       return ltype;
 }
 
-//expression       = shiftExpression [ ( "==" | "!=" | "<" | ">" | "<=" | ">=" ) shiftExpression ] .
+// andExpression = ["!"] compareExpression  [ ( "&&"  ) ["!"]  compareExpression ] .
     int gr_compareExpression(int* attribute) {
       int ltype;
       int operatorSymbol;
@@ -3448,12 +3449,79 @@ int foldCompareExpression(int* attribute, int ltype, int operatorSymbol, int rty
       ltype = foldCompareExpression(attribute, ltype, operatorSymbol, rtype);
       return ltype;
     }
-// expression = compareExpression {("&&" | "||" ) compareExpression }   .
+
+    // expression      =  ["!"] andExpression  [ ( "||" )  ["!"] andExpression ] .
+    int dofixupChainInAndExpression(int * attribute, int  ltype, int rtype){
+      int operatorSymbol;
+      int latt_const;
+      int latt_type;
+
+      latt_type = ATT_NOT;
+      latt_const = 0;
+
+      if (getAttributeType(attribute) == ATT_CONSTANT) {
+        latt_const = getAttributeValue(attribute);
+        latt_type = ATT_NOT;
+      } else {
+        latt_type = ATT_CONSTANT;
+        // assert: allocatedTemporaries == n + 1
+      }
+      resetAttribute(attribute);
+
+      while (symbol == SYM_AND) {
+            //gr_compareExpression  =  trype}
+            rtype = gr_andExpression(attribute);
+
+            //TODO add boolean type and change compareExpression to support boolean
+            if (ltype != rtype){
+                typeWarning(ltype, rtype);
+            }
+            //constant folding
+            //check if the last type was a constant or not
+            if (getAttributeType(attribute) == ATT_CONSTANT) {
+                if (latt_type == ATT_NOT) {
+                    latt_const = getConstFoldValueForTermOrBool(operatorSymbol, latt_const, attribute);
+                } else {
+                    latt_const = getAttributeValue(attribute);
+                    load_integer(latt_const);
+                    emitCodeForOperator(operatorSymbol,ltype, rtype);
+                }
+            } else {
+                if (latt_type == ATT_NOT) {
+                    load_integer(latt_const);
+                    latt_type = ATT_CONSTANT;
+                }
+                emitCodeForOperator(operatorSymbol,ltype, rtype);
+            }
+            resetAttribute(attribute);
+            }
+            //set the attribute
+            setAttributeForTerm(attribute, latt_const,latt_type);
+            // assert: allocatedTemporaries == n + 1
+            return ltype;
+    }
+
+    // andExpression = ["!"] compareExpression  [ ( "&&"  ) ["!"]  compareExpression ] .
+    int  gr_andExpression(int* attribute) {
+        int ltype;
+        int rtype;
+
+        ltype = 0;
+        rtype = 0;
+
+        // assert: n = allocatedTemporaries
+        ltype = gr_compareExpression(attribute);
+        // assert: allocatedTemporaries == n + 1
+        ltype = dofixupChainInAndExpression(attribute, ltype, rtype);
+
+        return ltype;
+    }
+
+// expression      =  ["!"] andExpression  [ ( "||" )  ["!"] andExpression ] .
 int dofixupChainInExpression(int * attribute, int  ltype, int rtype){
   int operatorSymbol;
   int latt_const;
   int latt_type;
-
 
   latt_type = ATT_NOT;
   latt_const = 0;
@@ -3465,17 +3533,13 @@ int dofixupChainInExpression(int * attribute, int  ltype, int rtype){
     latt_type = ATT_CONSTANT;
     // assert: allocatedTemporaries == n + 1
   }
-    resetAttribute(attribute);
+  resetAttribute(attribute);
 
-
-  while (isBooleanSymbol()) {
-        // { ("&&" | "||")}
-        operatorSymbol = symbol;
-        getSymbol();
+  while (symbol == SYM_OR) {
         //gr_compareExpression  =  trype}
-        rtype = gr_compareExpression(attribute);
+        rtype = gr_andExpression(attribute);
 
-//TODO add boolean type and change compareExpression to support boolean
+        //TODO add boolean type and change compareExpression to support boolean
         if (ltype != rtype){
             typeWarning(ltype, rtype);
         }
@@ -3514,7 +3578,7 @@ int dofixupChainInExpression(int * attribute, int  ltype, int rtype){
       rtype = 0;
 
       // assert: n = allocatedTemporaries
-      ltype = gr_compareExpression(attribute);
+      ltype = gr_andExpression(attribute);
       // assert: allocatedTemporaries == n + 1
       ltype = dofixupChainInExpression(attribute, ltype, rtype);
 
