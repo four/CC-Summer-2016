@@ -1305,6 +1305,7 @@ int getSymbol();
         if(getAttributeValue(attribute) < 0){
           load_integer(getAttributeValue(attribute)*(-1));
           emitRFormat(OP_SPECIAL, REG_ZR, currentTemporary(), currentTemporary(), FCT_SUBU);
+          free(attribute);
          // positive value
         }else{
           load_integer(getAttributeValue(attribute));
@@ -5389,39 +5390,42 @@ int parseSelectorDeclaration(int size){
 
           size = roundUp(*(registers+REG_A0), WORDSIZE);
 
-          if (size == symbolTableEntrySize && pointerForFree != 0) {
+          if (size == symbolTableEntrySize) {
 
-            *(registers + REG_V0) = (int) pointerForFree;
-            pointerForFree = loadVirtualMemory(pt, pointerForFree);
+            if (pointerForFree != 0){
 
-    if (debug_malloc) {
-      print(binaryName);
-      print((int*) ": reusing ");
-      print(itoa(size, string_buffer, 10, 0, 0));
-      print((int*) " bytes freed from the virtual address ");
-      print(itoa(*(registers + REG_V0), string_buffer, 16, 8, 0));
-      println();
-    }
+              *(registers + REG_V0) = (int) pointerForFree;
+              pointerForFree = loadVirtualMemory(pt, pointerForFree);
 
-  } else {
-    bump = brk;
+            if (debug_malloc) {
+                print(binaryName);
+                print((int*) ": reusing ");
+                print(itoa(size, string_buffer, 10, 0, 0));
+                print((int*) " bytes freed from the virtual address ");
+                print(itoa(*(registers + REG_V0), string_buffer, 16, 8, 0));
+                println();
+              }
+              
+            }
 
-    if (bump + size >= *(registers + REG_SP))
-      throwException(EXCEPTION_HEAPOVERFLOW, 0);
-    else {
-      *(registers + REG_V0) = bump;
-      brk = bump + size;
+          } else {
+            bump = brk;
+            if (bump + size >= *(registers + REG_SP))
+              throwException(EXCEPTION_HEAPOVERFLOW, 0);
+            else {
+              *(registers + REG_V0) = bump;
+              brk = bump + size;
 
-      if (debug_malloc) {
-        print(binaryName);
-        print((int*) ": actually mallocating ");
-        print(itoa(size, string_buffer, 10, 0, 0));
-        print((int*) " bytes at virtual address ");
-        print(itoa(bump, string_buffer, 16, 8, 0));
-        println();
-      }
-    }
-  }
+              if (debug_malloc) {
+                print(binaryName);
+                print((int*) ": actually mallocating ");
+                print(itoa(size, string_buffer, 10, 0, 0));
+                print((int*) " bytes at virtual address ");
+                print(itoa(bump, string_buffer, 16, 8, 0));
+                println();
+              }
+            }
+          }
         }
 
 
