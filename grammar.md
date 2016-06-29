@@ -74,7 +74,7 @@ statement         = ( [ "*" ] identifier selector | "*" "(" expression ")" ) "="
 
 variable          = type identifier  [ "[" literal "]" [ "[" literal "]" ] ] .
 
-struct            = "struct" identifier "{" { variable ";" } "}" ";" ???????
+struct            = "struct" identifier "{" { variable ";" } "}" ";" 
 
 procedure         = "(" [ variable { "," variable } ] ")"              
                     ( ";" | "{" { variable ";" } { statement } "}" ) .
