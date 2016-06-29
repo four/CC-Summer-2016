@@ -17,69 +17,69 @@ Keywords: int, while, if, else, return, void
 
 
 ```
-digit            = "0" | ... | "9" .                                            
+digit             = "0" | ... | "9" .                                            
 
-integer          = digit { digit } .                                            
+integer           = digit { digit } .                                            
 
-letter           = "a" | ... | "z" | "A" | ... | "Z" .                          
+letter            = "a" | ... | "z" | "A" | ... | "Z" .                          
 
-identifier       = letter { letter | digit | "_" } .                            
+identifier        = letter { letter | digit | "_" } .                            
 
-type             = "int" [ "*" ] | "struct" identifier "*".                      
+type              = "int" [ "*" ] | "struct" .                      
 
-selector         = [ ("."|"->") identifier | { "[" expression "]" ["[" expression "]"] } ] .                       
+selector          = [ "[" expression "]" [ "[" expression "]" ] ] .                       
 
-cast             = "(" type ")" .                                                
+cast              = "(" type ")" .                                                
 
-call             = identifier "(" [ expression { "," expression } ] ")" .        
+call              = "(" [ expression { "," expression } ] ")" .        
 
-literal          = integer | "'" ascii_character "'" .                           
+literal           = integer | "'" ascii_character "'" .                           
 
-factor           = [ cast ]                                                      
-                    ( [ "*" ] ( identifier [ selector ] | "(" expression ")" ) |
-                      call |                                                      
+factor            =  [ cast | "(" expression ")" ]                                                      
+                      ( [ "*" ] ( identifier | "(" expression ")") |
+                      identifier (call | selector)|                                                       
                       literal |                                                 
-                      "struct" identifier "->" identifier |
                       """ { ascii_character } """ ) .                           
 
-term             = factor { ( "*" | "/" | "%" ) factor } .                       
+term              = factor { ( "*" | "/" | "%" ) factor } .                       
 
-simpleExpression = [ "-" ] term { ( "+" | "-" ) term } .                        
+simpleExpression  = [ "-" ] term { ( "+" | "-" ) term } .                        
 
-shiftExpression  = simpleExpression { ( ">>" | "<<" ) simpleExpression } .
+shiftExpression   = simpleExpression { ( ">>" | "<<" ) simpleExpression } .
 
 compareExpression = shiftExpression [ ( "==" | "!=" | "<" | ">" | "<=" | ">=" ) shiftExpression ] .
 
-andExpression = ["!"] compareExpression  [ ( "&&"  ) ["!"]  compareExpression ] .
+andExpression     = ["!"] compareExpression  [ ( "&&"  ) ["!"]  compareExpression ] .
 
-expression      =  ["!"] andExpression  [ ( "||" )  ["!"] andExpression ] .
+expression        =  ["!"] andExpression  [ ( "||" )  ["!"] andExpression ] .
 
-while            = "while" "(" expression ")"
+while             = "while" "(" expression ")"
                              ( statement |
                                "{" { statement } "}" ) .
 
-if               = "if" "(" expression ")"
+if                = "if" "(" expression ")"
                              ( statement |
                                "{" { statement } "}" )
-                         [ "else"
+                     [ "else"
                              ( statement |
-                               "{" { statement } "}" ) ] .
+                              "{" { statement } "}" ) ] .
 
-return           = "return" [ expression ] .
+return            = "return" [ expression ] .
 
-statement        = ( [ "*" ] identifier [ selector ] | "*" "(" expression ")" ) "=" expression ";" |  
-                  call ";" |
-                    while |
-                    if |
-                    return ";" .
+statement         = ( [ "*" ] identifier selector | "*" "(" expression ")" ) "=" expression ";" |  
+                      call ";" |
+                      while |
+                      if |
+                      return ";" .
 
-variable         = type identifier [ "[" integer "]" ] | "struct" identifier "*" identifier.
+variable          = type identifier  [ "[" literal "]" [ "[" literal "]" ] ] .
 
-struct           = "struct" identifier "{" { variable ";" } "}" ";"
+struct            = "struct" identifier "{" { variable ";" } "}" ";" ???????
 
-procedure        = "(" [ variable { "," variable } ] ")"              
+procedure         = "(" [ variable { "," variable } ] ")"              
                     ( ";" | "{" { variable ";" } { statement } "}" ) .
 
-cstar(R)           = { type identifier (  [ selector ] | [ "=" [ cast ] [ "-" ] literal ] ) ";" |    
-                   ( "void" | type ) identifier procedure }  |                                
-                   (struct ) .  
+cstar             = ( "void" | type ) identifier procedure }  |        
+                    { type identifier (  [ "=" [ cast ] [ "-" ] literal ] |
+                                  "{" { type identifier [ "[" literal "]" [ "[" literal "]" ]  ";" } "}"  |
+                                 [ "[" literal "]" [ "[" literal "]" ] ] ) ";" .  
